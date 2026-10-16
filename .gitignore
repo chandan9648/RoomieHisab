@@ -1,4 +1,24 @@
+# dependencies
 node_modules/
-dist/
-.env.local
 
+# next.js
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# local env files — never commit real Firebase config
+.env.local
+.env*.local
+
+# vercel
+.vercel
+
+# testing
+coverage/
+
+# misc
+.DS_Store
+*.log

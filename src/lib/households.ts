@@ -27,6 +27,7 @@ import {
 import type { User } from "firebase/auth";
 
 import { requireFirebase } from "./firebase";
+import { withTimeout } from "./errors";
 import { generateInviteCode, normaliseInviteCode } from "./invite";
 import { safeMemberName, validateHouseholdName } from "./validation";
 import type { Household, Invite, Member, UserProfile } from "./types";
@@ -63,13 +64,13 @@ export async function ensureProfile(user: User): Promise<UserProfile> {
 
   if (!snap.exists()) {
     const profile: UserProfile = { ...identity(user), householdId: null, householdIds: [] };
-    await setDoc(ref, profile);
+    await withTimeout(setDoc(ref, profile), "create your profile");
     return profile;
   }
 
   // Keep the display name and avatar in step with the Google account without
   // disturbing household membership.
-  await setDoc(ref, identity(user), { merge: true });
+  await withTimeout(setDoc(ref, identity(user), { merge: true }), "refresh your profile");
   return { ...(snap.data() as UserProfile), ...identity(user) };
 }
 
@@ -91,12 +92,10 @@ export async function createHousehold(user: User, rawName: string): Promise<Hous
   const inviteCode = generateInviteCode();
   const createdAt = Date.now();
 
-  await setDoc(ref, {
-    name: name.value,
-    createdBy: user.uid,
-    inviteCode,
-    createdAt,
-  });
+  await withTimeout(
+    setDoc(ref, { name: name.value, createdBy: user.uid, inviteCode, createdAt }),
+    "create the household",
+  );
 
   const member: Member = {
     ...identity(user),
@@ -120,7 +119,7 @@ export async function createHousehold(user: User, rawName: string): Promise<Hous
     { ...identity(user), householdId: ref.id, householdIds: arrayUnion(ref.id) },
     { merge: true },
   );
-  await batch.commit();
+  await withTimeout(batch.commit(), "set up the household");
 
   return { id: ref.id, name: name.value, createdBy: user.uid, inviteCode, createdAt };
 }
@@ -152,10 +151,13 @@ export async function joinHouseholdByCode(user: User, rawCode: string): Promise<
   const existing = await getDoc(memberRef(db, invite.householdId, user.uid));
   if (existing.exists()) {
     // Already in this flat, so make it the active one rather than failing.
-    await setDoc(
-      profileRef(db, user.uid),
-      { householdId: invite.householdId, householdIds: arrayUnion(invite.householdId) },
-      { merge: true },
+    await withTimeout(
+      setDoc(
+        profileRef(db, user.uid),
+        { householdId: invite.householdId, householdIds: arrayUnion(invite.householdId) },
+        { merge: true },
+      ),
+      "switch to that household",
     );
     return {
       householdId: invite.householdId,
@@ -182,7 +184,7 @@ export async function joinHouseholdByCode(user: User, rawCode: string): Promise<
     },
     { merge: true },
   );
-  await batch.commit();
+  await withTimeout(batch.commit(), "join the household");
 
   return {
     householdId: invite.householdId,
@@ -194,10 +196,25 @@ export async function joinHouseholdByCode(user: User, rawCode: string): Promise<
 /** Points the dashboard at another household the user already belongs to. */
 export async function switchHousehold(uid: string, householdId: string): Promise<void> {
   const { db } = requireFirebase();
-  await setDoc(
-    profileRef(db, uid),
-    { householdId, householdIds: arrayUnion(householdId) },
-    { merge: true },
+  await withTimeout(
+    setDoc(
+      profileRef(db, uid),
+      { householdId, householdIds: arrayUnion(householdId) },
+      { merge: true },
+    ),
+    "switch household",
+  );
+}
+
+/**
+ * Clears the active household without leaving it, which is how the UI recovers
+ * when the current household has been deleted or access was revoked.
+ */
+export async function clearActiveHousehold(uid: string): Promise<void> {
+  const { db } = requireFirebase();
+  await withTimeout(
+    setDoc(profileRef(db, uid), { householdId: null }, { merge: true }),
+    "clear the active household",
   );
 }
 
@@ -205,7 +222,10 @@ export async function renameHousehold(householdId: string, rawName: string): Pro
   const { db } = requireFirebase();
   const name = validateHouseholdName(rawName);
   if (!name.ok) throw new Error(name.error);
-  await updateDoc(householdRef(db, householdId), { name: name.value });
+  await withTimeout(
+    updateDoc(householdRef(db, householdId), { name: name.value }),
+    "rename the household",
+  );
 }
 
 /**
@@ -226,7 +246,7 @@ export async function rotateInviteCode(household: Household, uid: string): Promi
   const batch = writeBatch(db);
   batch.set(inviteRef(db, code), invite);
   batch.update(householdRef(db, household.id), { inviteCode: code });
-  await batch.commit();
+  await withTimeout(batch.commit(), "issue a new invite code");
 
   // Deleted only after the new code is live, so a failure here can never leave
   // the household with no usable invite at all.
@@ -261,7 +281,7 @@ export async function leaveHousehold(
     { householdId: nextActive, householdIds: arrayRemove(household.id) },
     { merge: true },
   );
-  await batch.commit();
+  await withTimeout(batch.commit(), "leave the household");
   return nextActive;
 }
 
@@ -272,5 +292,43 @@ export async function setMemberRole(
   role: Member["role"],
 ): Promise<void> {
   const { db } = requireFirebase();
-  await updateDoc(memberRef(db, householdId, memberUid), { role });
+  await withTimeout(
+    updateDoc(memberRef(db, householdId, memberUid), { role }),
+    "change that role",
+  );
+}
+
+/**
+ * Removes a roommate from the household. Admins only, enforced by rules.
+ *
+ * Their past expenses are deliberately left in place so the history of what the
+ * flat actually spent stays intact; the settlement engine reports them as
+ * belonging to a former member and leaves them out of the split.
+ */
+export async function removeMember(householdId: string, memberUid: string): Promise<void> {
+  const { db } = requireFirebase();
+  await withTimeout(
+    deleteDoc(memberRef(db, householdId, memberUid)),
+    "remove that roommate",
+  );
+}
+
+/**
+ * Reads the names of the households a user belongs to, for the switcher.
+ * Membership is required for each read, so a stale id simply resolves to null.
+ */
+export async function fetchHouseholdNames(ids: string[]): Promise<Record<string, string>> {
+  const { db } = requireFirebase();
+  const entries = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const snap = await getDoc(householdRef(db, id));
+        return [id, snap.exists() ? ((snap.data() as Household).name ?? id) : ""] as const;
+      } catch {
+        // A household we can no longer read is simply not offered.
+        return [id, ""] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(entries.filter(([, name]) => name));
 }

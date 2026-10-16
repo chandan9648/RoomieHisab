@@ -297,9 +297,11 @@ export function Avatar({
     .join("");
 
   if (photoURL) {
+    // A plain <img> on purpose: Google serves avatars from several hosts, and
+    // next/image would need each one added to `images.remotePatterns` before it
+    // would render at all.
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- Google avatar URLs
-      // are arbitrary remote hosts; next/image would need every one allow-listed.
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={photoURL}
         alt=""

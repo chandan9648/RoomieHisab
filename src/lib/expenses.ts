@@ -7,6 +7,7 @@
 import { addDoc, deleteDoc, setDoc } from "firebase/firestore";
 
 import { requireFirebase } from "./firebase";
+import { withTimeout } from "./errors";
 import { expenseRef, expensesRef } from "./households";
 import { parseAmountToPaise } from "./money";
 import { todayISO } from "./dates";
@@ -86,7 +87,7 @@ export function buildExpense(
 
 export async function createExpense(householdId: string, data: ExpenseData): Promise<void> {
   const { db } = requireFirebase();
-  await addDoc(expensesRef(db, householdId), data);
+  await withTimeout(addDoc(expensesRef(db, householdId), data), "save the expense");
 }
 
 /**
@@ -99,12 +100,18 @@ export async function saveExpense(
   data: ExpenseData,
 ): Promise<void> {
   const { db } = requireFirebase();
-  await setDoc(expenseRef(db, householdId, expenseId), data);
+  await withTimeout(
+    setDoc(expenseRef(db, householdId, expenseId), data),
+    "update the expense",
+  );
 }
 
 export async function removeExpense(householdId: string, expenseId: string): Promise<void> {
   const { db } = requireFirebase();
-  await deleteDoc(expenseRef(db, householdId, expenseId));
+  await withTimeout(
+    deleteDoc(expenseRef(db, householdId, expenseId)),
+    "delete the expense",
+  );
 }
 
 /** The payer or a household admin may edit and delete; nobody else. */

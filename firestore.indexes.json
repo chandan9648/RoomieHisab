@@ -1,0 +1,5 @@
+{
+  "comment": "No composite indexes are required. The app subscribes to whole subcollections (members, expenses) and filters by month on the client, so every query it makes is served by Firestore's automatic single-field indexes.",
+  "indexes": [],
+  "fieldOverrides": []
+}

@@ -32,9 +32,12 @@ export function MonthPicker({
   // Nothing has been spent in the future, so there is nowhere to go forward to.
   const atLatest = isAllTime || value >= thisMonth;
 
-  // The dropdown must be able to show the selected month even if every expense
-  // in it was just deleted or moved.
-  const options = months.includes(value) || isAllTime ? months : [value, ...months];
+  // The dropdown must be able to show the selected month even when it holds no
+  // expenses — stepping back with the arrows lands on exactly that case.
+  const options =
+    months.includes(value) || isAllTime
+      ? months
+      : [value, ...months].sort((a, b) => b.localeCompare(a));
 
   return (
     <div className="flex items-center gap-2">

@@ -17,6 +17,8 @@ export type HouseholdState = {
   members: Member[];
   expenses: Expense[];
   error: string;
+  /** True until the first expenses snapshot lands, for the list skeleton. */
+  expensesLoading: boolean;
   /** Set when the active household rejected us, e.g. after being removed. */
   accessDenied: boolean;
   /** The signed-in user's own membership row, if any. */
@@ -30,6 +32,7 @@ const EMPTY: HouseholdState = {
   members: [],
   expenses: [],
   error: "",
+  expensesLoading: true,
   accessDenied: false,
   me: null,
 };
@@ -54,6 +57,10 @@ export function useHousehold(user: User | null): HouseholdState {
   const [members, setMembers] = useState<Member[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [householdLoading, setHouseholdLoading] = useState(false);
+  // Tracked separately so the dashboard does not flash "no members yet" in the
+  // gap between the household document and the members snapshot arriving.
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [expensesLoaded, setExpensesLoaded] = useState(false);
   const [householdError, setHouseholdError] = useState("");
   const [accessDenied, setAccessDenied] = useState(false);
 
@@ -115,6 +122,8 @@ export function useHousehold(user: User | null): HouseholdState {
       setMembers([]);
       setExpenses([]);
       setHouseholdLoading(false);
+      setMembersLoaded(false);
+      setExpensesLoaded(false);
       setHouseholdError("");
       setAccessDenied(false);
       return;
@@ -122,6 +131,8 @@ export function useHousehold(user: User | null): HouseholdState {
 
     let cancelled = false;
     setHouseholdLoading(true);
+    setMembersLoaded(false);
+    setExpensesLoaded(false);
     setHouseholdError("");
     setAccessDenied(false);
 
@@ -129,7 +140,10 @@ export function useHousehold(user: User | null): HouseholdState {
       if (cancelled) return;
       if (isPermissionDenied(caught)) setAccessDenied(true);
       setHouseholdError(describeError(caught));
+      // Released so an error surfaces instead of leaving a permanent spinner.
       setHouseholdLoading(false);
+      setMembersLoaded(true);
+      setExpensesLoaded(true);
     };
 
     const unsubHousehold = onSnapshot(
@@ -147,6 +161,7 @@ export function useHousehold(user: User | null): HouseholdState {
       (snap) => {
         if (cancelled) return;
         setMembers(snap.docs.map((d) => ({ ...(d.data() as Member), uid: d.id })));
+        setMembersLoaded(true);
       },
       fail,
     );
@@ -160,6 +175,7 @@ export function useHousehold(user: User | null): HouseholdState {
             .map((d) => ({ ...(d.data() as Omit<Expense, "id">), id: d.id }))
             .sort(byRecency),
         );
+        setExpensesLoaded(true);
       },
       fail,
     );
@@ -180,12 +196,13 @@ export function useHousehold(user: User | null): HouseholdState {
   if (!user) return EMPTY;
 
   return {
-    loading: profileLoading || (Boolean(activeId) && householdLoading),
+    loading: profileLoading || (Boolean(activeId) && (householdLoading || !membersLoaded)),
     profile,
     household,
     members,
     expenses,
     error: profileError || householdError,
+    expensesLoading: Boolean(activeId) && !expensesLoaded,
     accessDenied,
     me,
   };

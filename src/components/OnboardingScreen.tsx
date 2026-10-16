@@ -15,10 +15,18 @@ import { Alert, Button, Card, Field, IconButton } from "./ui/primitives";
 export function OnboardingScreen({
   user,
   profile,
+  /**
+   * A failure from the profile listener. Without showing it here, a backend
+   * that cannot be reached looks like a perfectly normal "you have no
+   * household yet" screen, and the first write is the only hint something is
+   * wrong.
+   */
+  loadError,
   onSignOut,
 }: {
   user: User;
   profile: UserProfile | null;
+  loadError?: string;
   onSignOut: () => void;
 }) {
   const [name, setName] = useState("");
@@ -101,6 +109,12 @@ export function OnboardingScreen({
           </div>
           <IconButton label="Sign out" icon={<LogOut size={18} />} onClick={onSignOut} />
         </div>
+
+        {loadError && !error ? (
+          <div className="mb-4">
+            <Alert tone="error">{loadError}</Alert>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mb-4">
