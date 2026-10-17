@@ -9,8 +9,59 @@
 import { AlertCircle, CheckCircle2, Info, Loader2, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+/**
+ * Tailwind emits its `display` utilities in alphabetical order, so `.inline-flex`
+ * and `.grid` land *after* `.hidden` in the stylesheet. Writing both on one
+ * element therefore does not resolve the way the class list reads: a component
+ * whose base class is `inline-flex` ignored a `hidden` passed in by its caller
+ * and stayed visible at every width. That is what let the invite-code button and
+ * the desktop "Add expense" button spill out of the mobile header and push the
+ * whole page sideways.
+ *
+ * `cx` resolves that conflict itself: among the display utilities written for the
+ * same variant (`hidden` and `inline-flex` unprefixed, or `sm:hidden` and
+ * `sm:flex`), the last one wins, which is what the class list reads as. Every
+ * other utility is passed through untouched.
+ */
+const DISPLAY_UTILITIES = new Set([
+  "block",
+  "inline-block",
+  "inline",
+  "flex",
+  "inline-flex",
+  "table",
+  "inline-table",
+  "flow-root",
+  "grid",
+  "inline-grid",
+  "contents",
+  "list-item",
+  "hidden",
+]);
+
+/** `sm:hidden` -> "sm:", `hidden` -> "". Anything that is not a display utility -> null. */
+function displayVariant(token: string): string | null {
+  const split = token.lastIndexOf(":");
+  const base = split === -1 ? token : token.slice(split + 1);
+  return DISPLAY_UTILITIES.has(base) ? token.slice(0, split + 1) : null;
+}
+
 export function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(" ");
+  const tokens = parts.filter(Boolean).join(" ").split(/\s+/).filter(Boolean);
+
+  // Per variant, remember which display utility was written last.
+  const winner = new Map<string, number>();
+  tokens.forEach((token, index) => {
+    const variant = displayVariant(token);
+    if (variant !== null) winner.set(variant, index);
+  });
+
+  return tokens
+    .filter((token, index) => {
+      const variant = displayVariant(token);
+      return variant === null || winner.get(variant) === index;
+    })
+    .join(" ");
 }
 
 export function Card({

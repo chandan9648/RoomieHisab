@@ -157,7 +157,13 @@ service cloud.firestore {
       // ------------------------------------------------------------- members
 
       match /members/{memberId} {
-        allow read: if isMember(hid);
+        // Your own row is readable whether or not you are in this household, so
+        // a client can ask "am I already in here?" while redeeming an invite.
+        // Without this, that question is itself a permission error, and a first
+        // join fails before it starts. It tells the caller nothing about anyone
+        // but themselves. Listing the roster still requires membership.
+        allow get: if signedIn() && (uid() == memberId || isMember(hid));
+        allow list: if isMember(hid);
 
         /**
          * Two ways in, and no others:

@@ -21,6 +21,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  writeBatch,
   type Firestore,
 } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -359,10 +360,45 @@ describe("members", () => {
     await assertFails(getDocs(collection(as("carol"), "households/H1/members")));
   });
 
+  it("lets anyone check their own membership row in a flat they are not in", async () => {
+    // The join flow asks "am I already in here?" before redeeming a code. If
+    // that question is itself a permission error, a first-time join fails
+    // before it starts, which is exactly what used to happen.
+    await assertSucceeds(getDoc(doc(as("dave"), "households/H1/members/dave")));
+  });
+
+  it("still hides other people's rows from a non-member", async () => {
+    await assertFails(getDoc(doc(as("dave"), "households/H1/members/alice")));
+    await assertFails(getDoc(doc(as("carol"), "households/H1/members/bob")));
+  });
+
   it("lets a stranger join by presenting a valid code for that household", async () => {
     await assertSucceeds(
       setDoc(doc(as("dave"), "households/H1/members/dave"), member("dave", "member", H1_CODE)),
     );
+  });
+
+  it("allows the whole join as `joinHouseholdByCode` actually performs it", async () => {
+    // Every step of the real flow, in order and as the same user: resolve the
+    // code, check your own membership, then write the member row and the
+    // profile in one batch. Each piece is asserted elsewhere; this is the one
+    // that fails if the sequence as a whole regresses.
+    const db = as("dave");
+
+    await assertSucceeds(getDoc(doc(db, "invites/" + H1_CODE)));
+    await assertSucceeds(getDoc(doc(db, "households/H1/members/dave")));
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, "households/H1/members/dave"), member("dave", "member", H1_CODE));
+    batch.set(
+      doc(db, "users/dave"),
+      { uid: "dave", householdId: "H1", householdIds: ["H1"] },
+      { merge: true },
+    );
+    await assertSucceeds(batch.commit());
+
+    // And the flat is readable only once that membership row exists.
+    await assertSucceeds(getDoc(doc(db, "households/H1")));
   });
 
   it("refuses to let a joiner make themselves an admin", async () => {

@@ -34,7 +34,7 @@ export function AppHeader({
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+      <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3 sm:gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white">
           <Wallet size={20} aria-hidden />
         </span>
@@ -46,13 +46,18 @@ export function AppHeader({
           <p className="truncate text-xs text-slate-500">RoomieHisab · live</p>
         </div>
 
+        {/*
+          Capped and truncated rather than left to size itself: the code is a
+          long unbroken string, and a header item that refuses to shrink is what
+          pushes the flat name out of the row and the page sideways on a phone.
+        */}
         <Button
           variant="secondary"
           onClick={() => void copyCode()}
           icon={copied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />}
-          className="tnum hidden px-3 text-xs sm:inline-flex"
+          className="tnum hidden min-w-0 max-w-[14rem] shrink px-3 text-xs sm:inline-flex"
         >
-          <span className="font-mono tracking-wider">
+          <span className="truncate font-mono tracking-wider">
             {formatInviteCode(household.inviteCode)}
           </span>
         </Button>

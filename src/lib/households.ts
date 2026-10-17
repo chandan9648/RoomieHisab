@@ -27,7 +27,7 @@ import {
 import type { User } from "firebase/auth";
 
 import { requireFirebase } from "./firebase";
-import { withTimeout } from "./errors";
+import { isPermissionDenied, withTimeout } from "./errors";
 import { generateInviteCode, normaliseInviteCode } from "./invite";
 import { safeMemberName, validateHouseholdName } from "./validation";
 import type { Household, Invite, Member, UserProfile } from "./types";
@@ -134,6 +134,26 @@ export async function lookupInvite(rawCode: string): Promise<Invite | null> {
   return snap.exists() ? (snap.data() as Invite) : null;
 }
 
+/**
+ * True when the caller already has a membership row in this household.
+ *
+ * Firestore refuses a `get` the rules do not allow whether or not the document
+ * exists, and reading a household's members requires being one. For the person
+ * this function exists to serve — somebody redeeming an invite for a flat they
+ * have never been in — the read is therefore *denied*, not empty. Treating that
+ * denial as an error is what made every first-time join fail with "You do not
+ * have permission for that" before the join was even attempted.
+ */
+async function alreadyJoined(db: Firestore, householdId: string, uid: string): Promise<boolean> {
+  try {
+    const snap = await getDoc(memberRef(db, householdId, uid));
+    return snap.exists();
+  } catch (caught) {
+    if (isPermissionDenied(caught)) return false;
+    throw caught;
+  }
+}
+
 export type JoinResult = { householdId: string; householdName: string; alreadyMember: boolean };
 
 /**
@@ -148,8 +168,7 @@ export async function joinHouseholdByCode(user: User, rawCode: string): Promise<
   const invite = await lookupInvite(code);
   if (!invite) throw new Error("That invite code does not exist. Check it with your roommate.");
 
-  const existing = await getDoc(memberRef(db, invite.householdId, user.uid));
-  if (existing.exists()) {
+  if (await alreadyJoined(db, invite.householdId, user.uid)) {
     // Already in this flat, so make it the active one rather than failing.
     await withTimeout(
       setDoc(

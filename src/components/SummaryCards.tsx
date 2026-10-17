@@ -36,7 +36,9 @@ function Metric({
       <p className="mt-3 text-sm text-slate-500">{label}</p>
       <p
         className={cx(
-          "tnum mt-1 text-xl font-bold tracking-tight sm:text-2xl",
+          // `break-words` so a very large total wraps inside its card on a
+          // narrow phone instead of spilling out of it.
+          "tnum mt-1 text-xl font-bold tracking-tight break-words sm:text-2xl",
           emphasis === "positive" && "text-emerald-700",
           emphasis === "negative" && "text-amber-700",
           !emphasis && "text-slate-900",
