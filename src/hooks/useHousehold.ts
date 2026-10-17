@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { onSnapshot } from "firebase/firestore";
+import { getDoc, onSnapshot, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 
 import { db } from "@/lib/firebase";
 import { describeError, isPermissionDenied } from "@/lib/errors";
-import { ensureProfile, expensesRef, householdRef, membersRef, profileRef } from "@/lib/households";
+import {
+  ensureProfile,
+  expensesRef,
+  householdRef,
+  memberRef,
+  membersRef,
+  profileRef,
+} from "@/lib/households";
 import type { Expense, Household, Member, UserProfile } from "@/lib/types";
 
 export type HouseholdState = {
@@ -37,9 +44,52 @@ const EMPTY: HouseholdState = {
   me: null,
 };
 
+/**
+ * How many times a permission error may be treated as a passing auth problem
+ * before it is taken at face value. Two retries covers a token that was still
+ * being minted when the listeners attached, without leaving someone who really
+ * was removed staring at a spinner.
+ */
+const MAX_RECOVERY_ATTEMPTS = 2;
+const RECOVERY_DELAY_MS = 700;
+
 /** Newest first, with a stable tiebreaker so equal dates do not jitter. */
 function byRecency(a: Expense, b: Expense): number {
   return b.date.localeCompare(a.date) || b.createdAt - a.createdAt || a.id.localeCompare(b.id);
+}
+
+type Membership = "member" | "removed" | "unknown";
+
+/**
+ * Settles whether a permission error really means "you were removed".
+ *
+ * Firestore returns `permission-denied` both for someone who has genuinely
+ * lost access and for a listener that attached while the ID token was stale —
+ * which happens on a slow phone, right after a sign-in, or when a backgrounded
+ * tab wakes up. The two are indistinguishable at the listener, and a denied
+ * listener is dead: Firestore never retries it. Taking the first denial at face
+ * value is what puts "You no longer have access" in front of a member who is
+ * still perfectly entitled to be there.
+ *
+ * Rules allow anyone signed in to read *their own* membership row whether or
+ * not they are a member of that household, so the question can be asked
+ * directly — after forcing a fresh token, which is the thing most likely to
+ * have been wrong in the first place.
+ */
+async function confirmMembership(
+  firestore: Firestore,
+  user: User,
+  householdId: string,
+): Promise<Membership> {
+  try {
+    await user.getIdToken(true);
+    const snap = await getDoc(memberRef(firestore, householdId, user.uid));
+    return snap.exists() ? "member" : "removed";
+  } catch {
+    // Even this read failed, so the session rather than the membership is the
+    // suspect. The caller retries instead of accusing the user of being removed.
+    return "unknown";
+  }
 }
 
 /**
@@ -82,7 +132,16 @@ export function useHousehold(user: User | null): HouseholdState {
 
     (async () => {
       try {
-        await ensureProfile(user);
+        try {
+          await ensureProfile(user);
+        } catch (caught) {
+          // The same stale-token race as the household listeners below: the
+          // first write after a sign-in can land before the token does.
+          if (!isPermissionDenied(caught)) throw caught;
+          await user.getIdToken(true).catch(() => undefined);
+          if (cancelled) return;
+          await ensureProfile(user);
+        }
       } catch (caught) {
         if (!cancelled) {
           setProfileError(describeError(caught));
@@ -117,7 +176,8 @@ export function useHousehold(user: User | null): HouseholdState {
 
   // Household listeners, rebuilt whenever the active household changes.
   useEffect(() => {
-    if (!user || !db || !activeId) {
+    const firestore = db;
+    if (!user || !firestore || !activeId) {
       setHousehold(null);
       setMembers([]);
       setExpenses([]);
@@ -129,14 +189,26 @@ export function useHousehold(user: User | null): HouseholdState {
       return;
     }
 
+    const householdId = activeId;
     let cancelled = false;
+    let attempts = 0;
+    let recovering = false;
+    let unsubscribers: Array<() => void> = [];
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
     setHouseholdLoading(true);
     setMembersLoaded(false);
     setExpensesLoaded(false);
     setHouseholdError("");
     setAccessDenied(false);
 
-    const fail = (caught: unknown) => {
+    const detach = () => {
+      unsubscribers.forEach((off) => off());
+      unsubscribers = [];
+    };
+
+    /** Reports the failure to the user and stops trying. */
+    const settle = (caught: unknown) => {
       if (cancelled) return;
       if (isPermissionDenied(caught)) setAccessDenied(true);
       setHouseholdError(describeError(caught));
@@ -146,45 +218,86 @@ export function useHousehold(user: User | null): HouseholdState {
       setExpensesLoaded(true);
     };
 
-    const unsubHousehold = onSnapshot(
-      householdRef(db, activeId),
-      (snap) => {
-        if (cancelled) return;
-        setHousehold(snap.exists() ? ({ id: snap.id, ...snap.data() } as Household) : null);
-        setHouseholdLoading(false);
-      },
-      fail,
-    );
+    const attach = () => {
+      unsubscribers = [
+        onSnapshot(
+          householdRef(firestore, householdId),
+          (snap) => {
+            if (cancelled) return;
+            setHousehold(snap.exists() ? ({ id: snap.id, ...snap.data() } as Household) : null);
+            setHouseholdLoading(false);
+          },
+          fail,
+        ),
+        onSnapshot(
+          membersRef(firestore, householdId),
+          (snap) => {
+            if (cancelled) return;
+            setMembers(snap.docs.map((d) => ({ ...(d.data() as Member), uid: d.id })));
+            setMembersLoaded(true);
+          },
+          fail,
+        ),
+        onSnapshot(
+          expensesRef(firestore, householdId),
+          (snap) => {
+            if (cancelled) return;
+            setExpenses(
+              snap.docs
+                .map((d) => ({ ...(d.data() as Omit<Expense, "id">), id: d.id }))
+                .sort(byRecency),
+            );
+            setExpensesLoaded(true);
+          },
+          fail,
+        ),
+      ];
+    };
 
-    const unsubMembers = onSnapshot(
-      membersRef(db, activeId),
-      (snap) => {
-        if (cancelled) return;
-        setMembers(snap.docs.map((d) => ({ ...(d.data() as Member), uid: d.id })));
-        setMembersLoaded(true);
-      },
-      fail,
-    );
+    const recover = async (caught: unknown) => {
+      // All three listeners come down: the denied one is already dead, and
+      // re-attaching alongside the survivors would duplicate them.
+      detach();
+      attempts += 1;
+      setHouseholdLoading(true);
 
-    const unsubExpenses = onSnapshot(
-      expensesRef(db, activeId),
-      (snap) => {
-        if (cancelled) return;
-        setExpenses(
-          snap.docs
-            .map((d) => ({ ...(d.data() as Omit<Expense, "id">), id: d.id }))
-            .sort(byRecency),
-        );
-        setExpensesLoaded(true);
-      },
-      fail,
-    );
+      const membership = await confirmMembership(firestore, user, householdId);
+      if (cancelled) return;
+
+      if (membership === "removed") {
+        settle(caught);
+        return;
+      }
+
+      console.warn(
+        `[household] permission denied on ${householdId} while membership reads ` +
+          `"${membership}"; retrying (${attempts}/${MAX_RECOVERY_ATTEMPTS})`,
+      );
+      retryTimer = setTimeout(() => {
+        if (!cancelled) attach();
+      }, RECOVERY_DELAY_MS * attempts);
+    };
+
+    function fail(caught: unknown) {
+      if (cancelled) return;
+      if (!isPermissionDenied(caught) || attempts >= MAX_RECOVERY_ATTEMPTS) {
+        settle(caught);
+        return;
+      }
+      // The three listeners fail together; one recovery covers them all.
+      if (recovering) return;
+      recovering = true;
+      void recover(caught).finally(() => {
+        recovering = false;
+      });
+    }
+
+    attach();
 
     return () => {
       cancelled = true;
-      unsubHousehold();
-      unsubMembers();
-      unsubExpenses();
+      clearTimeout(retryTimer);
+      detach();
     };
   }, [user, activeId]);
 

@@ -43,6 +43,7 @@ export default function Page() {
         signingIn={auth.signingIn}
         error={auth.error}
         onDismissError={auth.clearError}
+        embeddedBrowser={auth.embeddedBrowser}
       />
     );
   }

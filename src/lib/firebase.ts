@@ -29,6 +29,14 @@ const app: FirebaseApp | null = firebaseConfigured
   : null;
 
 export const auth: Auth | null = app ? getAuth(app) : null;
+
+/**
+ * Where Firebase's OAuth handler (`/__/auth/*`) is served from. Exported
+ * because the sign-in flow has to know whether that handler shares an origin
+ * with the app: a redirect sign-in is only dependable when it does.
+ */
+export const authDomain = config.authDomain;
+
 export const db: Firestore | null = app ? getFirestore(app) : null;
 
 export const googleProvider = new GoogleAuthProvider();

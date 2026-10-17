@@ -31,12 +31,68 @@ export function describeError(error: unknown): string {
         return "This domain is not authorised in Firebase Auth. Add it under Authentication to Settings to Authorised domains.";
       case "auth/operation-not-allowed":
         return "Google sign-in is not enabled for this Firebase project.";
+
+      // --- flows that break on phones, where the cause is never obvious ---
+
+      // The sign-in page could not read back the state it saved before leaving
+      // for Google. On a phone this is almost always an in-app browser, or a
+      // browser blocking storage for the Firebase auth handler.
+      case "auth/missing-initial-state":
+        return "Sign-in could not be completed in this browser. Open the site directly in Chrome or Safari — not inside another app — and try again.";
+      case "auth/web-storage-unsupported":
+        return "This browser is blocking the storage sign-in needs. Turn off private or restricted browsing, or open the site in Chrome or Safari.";
+      case "auth/operation-not-supported-in-this-environment":
+        return "This browser cannot complete Google sign-in. Open the site in Chrome or Safari and try again.";
+      case "auth/redirect-cancelled-by-user":
+        return "Sign-in was cancelled.";
+      case "auth/redirect-operation-pending":
+        return "A sign-in is already in progress. Give it a moment.";
+      case "auth/timeout":
+        return "Sign-in took too long to respond. Check your connection and try again.";
+      case "auth/too-many-requests":
+        return "Too many sign-in attempts. Wait a minute and try again.";
+      case "auth/user-disabled":
+        return "This account has been disabled.";
+      case "auth/account-exists-with-different-credential":
+        return "An account already exists with this email using a different sign-in method.";
+      case "auth/internal-error":
+        return "Google sign-in failed unexpectedly. Please try again.";
+
       default:
         return error.message;
     }
   }
   if (error instanceof Error) return error.message;
   return "Something went wrong. Please try again.";
+}
+
+/** The Firebase code behind an error, or "" when it is not a Firebase error. */
+export function errorCode(error: unknown): string {
+  return error instanceof FirebaseError ? error.code : "";
+}
+
+/**
+ * Popup failures that mean "this browser will not give you a popup", as
+ * opposed to "the user changed their mind". Only these are worth retrying as a
+ * full-page redirect; cancelling must stay cancelled.
+ */
+const REDIRECT_WORTHY_CODES = new Set([
+  "auth/popup-blocked",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/web-storage-unsupported",
+]);
+
+export function shouldFallBackToRedirect(code: string): boolean {
+  return REDIRECT_WORTHY_CODES.has(code);
+}
+
+/**
+ * Sign-in failures are reported to the user in plain words, which deliberately
+ * drops the detail needed to diagnose them. The console keeps that detail so a
+ * phone attached to desktop DevTools shows the actual code.
+ */
+export function logAuthError(stage: string, error: unknown): void {
+  console.error(`[auth] ${stage} failed (${errorCode(error) || "no code"})`, error);
 }
 
 /** True for the one error we want to render as a dedicated access screen. */

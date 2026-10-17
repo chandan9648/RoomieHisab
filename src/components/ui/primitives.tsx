@@ -6,7 +6,7 @@
  * card or button treatment lands everywhere at once.
  */
 
-import { AlertCircle, CheckCircle2, Info, Loader2, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
@@ -255,6 +255,7 @@ export function Field({
 const ALERT_TONES = {
   error: { wrap: "border-rose-200 bg-rose-50 text-rose-800", Icon: AlertCircle },
   success: { wrap: "border-emerald-200 bg-emerald-50 text-emerald-800", Icon: CheckCircle2 },
+  warning: { wrap: "border-amber-200 bg-amber-50 text-amber-800", Icon: AlertTriangle },
   info: { wrap: "border-slate-200 bg-slate-50 text-slate-700", Icon: Info },
 } as const;
 
