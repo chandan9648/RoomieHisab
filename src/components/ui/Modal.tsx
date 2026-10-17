@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 
+import { pauseSmoothScroll, resumeSmoothScroll } from "@/lib/smoothScroll";
 import { IconButton } from "./primitives";
 
 const FOCUSABLE =
@@ -70,12 +71,17 @@ export function Modal({
     restoreTo.current = document.activeElement as HTMLElement | null;
     const { overflow } = document.body.style;
     document.body.style.overflow = "hidden";
+    // Smooth scrolling moves the page with `window.scrollTo` on every frame,
+    // which `overflow: hidden` cannot hold back — it has to be asked to stop,
+    // or the page carries on drifting behind the dialog.
+    pauseSmoothScroll();
 
     const firstField = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
     (firstField ?? panelRef.current)?.focus();
 
     return () => {
       document.body.style.overflow = overflow;
+      resumeSmoothScroll();
       restoreTo.current?.focus?.();
     };
   }, [open]);

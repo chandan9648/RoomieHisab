@@ -5,7 +5,6 @@ import type { User } from "firebase/auth";
 import { Plus } from "lucide-react";
 
 import { ALL_TIME, currentMonthKey, formatMonthKey, matchesMonth, monthsWithData, type MonthFilter } from "@/lib/dates";
-import { describeError } from "@/lib/errors";
 import { removeExpense } from "@/lib/expenses";
 import { calculateSettlement } from "@/lib/settlements";
 import { formatPaise } from "@/lib/money";
@@ -43,7 +42,6 @@ export function Dashboard({
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -83,18 +81,9 @@ export function Dashboard({
       body: `"${expense.description}" for ${formatPaise(expense.amountPaise)} will be removed for everyone. This cannot be undone.`,
       confirmLabel: "Delete expense",
       onConfirm: async () => {
-        setConfirmBusy(true);
         setError("");
-        try {
-          await removeExpense(household.id, expense.id);
-          setNotice("Expense deleted.");
-          setConfirmation(null);
-        } catch (caught) {
-          setError(describeError(caught));
-          setConfirmation(null);
-        } finally {
-          setConfirmBusy(false);
-        }
+        await removeExpense(household.id, expense.id);
+        setNotice("Expense deleted.");
       },
     });
   }
@@ -277,11 +266,7 @@ export function Dashboard({
         onSaved={setNotice}
       />
 
-      <ConfirmDialog
-        request={confirmation}
-        busy={confirmBusy}
-        onCancel={() => setConfirmation(null)}
-      />
+      <ConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
     </div>
   );
 }

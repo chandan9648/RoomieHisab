@@ -57,8 +57,16 @@ export function MemberBalances({
                   <Avatar name={balance.name} photoURL={member?.photoURL} />
 
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 truncate font-semibold text-slate-900">
-                      <span className="truncate">{balance.name}</span>
+                    {/*
+                      `truncate` belongs on the name alone: on this flex row it
+                      would only leak `white-space: nowrap` into the badges.
+                      The name keeps a floor and the badges wrap underneath it
+                      when the row runs out of room — a truncating name has a
+                      min-content width of zero, so without the floor it is the
+                      name that disappears and the badges that survive.
+                    */}
+                    <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-slate-900">
+                      <span className="min-w-24 flex-1 truncate">{balance.name}</span>
                       {isMe ? <Badge tone="accent">You</Badge> : null}
                       {member?.role === "admin" ? <Badge>Admin</Badge> : null}
                     </p>
@@ -67,7 +75,7 @@ export function MemberBalances({
                     </p>
                   </div>
 
-                  <div className="shrink-0 text-right">
+                  <div className="shrink-0 whitespace-nowrap text-right">
                     <p
                       className={cx(
                         "tnum font-bold",

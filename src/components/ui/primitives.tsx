@@ -76,7 +76,14 @@ export function Card({
   return (
     <Tag
       className={cx(
-        "rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-900/[0.03]",
+        // `min-w-0` is load-bearing. A card is nearly always a grid or flex
+        // item, and such an item refuses by default to shrink below its
+        // min-content width. Cards are full of `truncate` text, and `truncate`
+        // means `white-space: nowrap`, whose min-content width is the whole
+        // unwrapped string — so without this a card holding one long expense
+        // description grows to the width of that sentence and carries the
+        // layout off the side of a phone instead of ellipsing inside it.
+        "min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-900/[0.03]",
         className,
       )}
     >
@@ -392,7 +399,9 @@ export function Badge({
   return (
     <span
       className={cx(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+        // A badge sits next to a name that truncates. It must keep its own size
+        // rather than be squeezed until "Admin" breaks across two lines.
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
         tones[tone],
       )}
     >

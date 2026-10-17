@@ -89,6 +89,22 @@ export function HouseholdPanel({
     }
   }
 
+  /**
+   * The confirm-dialog variant of `run`. It deliberately does not catch: the
+   * dialog shows the failure itself and stays open, which is the only place the
+   * user is actually looking. Swallowing it here would close the dialog onto an
+   * alert at the top of a panel they have scrolled past.
+   */
+  async function runConfirmed(key: string, task: () => Promise<void>) {
+    setBusy(key);
+    setError("");
+    try {
+      await task();
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function copyCode() {
     try {
       await navigator.clipboard.writeText(household.inviteCode);
@@ -141,7 +157,7 @@ export function HouseholdPanel({
                     body: "The current code stops working immediately. Anyone you have already shared it with will not be able to join until you send them the new one.",
                     confirmLabel: "Issue new code",
                     onConfirm: () =>
-                      run("rotate", async () => {
+                      runConfirmed("rotate", async () => {
                         if (!me) return;
                         await rotateInviteCode(household, me.uid);
                         onNotice("A new invite code is live. The old one no longer works.");
@@ -176,7 +192,7 @@ export function HouseholdPanel({
               <li key={member.uid} className="flex items-center gap-3 p-4">
                 <Avatar name={member.displayName} photoURL={member.photoURL} />
                 <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
+                  <p className="flex min-w-0 flex-wrap items-center gap-2 font-semibold text-slate-900">
                     <span className="truncate">{member.displayName}</span>
                     {isMe ? <Badge tone="accent">You</Badge> : null}
                     {member.role === "admin" ? <Badge>Admin</Badge> : null}
@@ -223,7 +239,7 @@ export function HouseholdPanel({
                             body: "They lose access to this household immediately. Their past expenses stay in the history but are left out of future splits.",
                             confirmLabel: "Remove roommate",
                             onConfirm: () =>
-                              run(`remove-${member.uid}`, async () => {
+                              runConfirmed(`remove-${member.uid}`, async () => {
                                 await removeMember(household.id, member.uid);
                                 onNotice(`${member.displayName} was removed.`);
                               }),
@@ -336,7 +352,7 @@ export function HouseholdPanel({
                     : "You will lose access to these expenses until you rejoin with an invite code.",
                 confirmLabel: "Leave household",
                 onConfirm: () =>
-                  run("leave", async () => {
+                  runConfirmed("leave", async () => {
                     if (!me) return;
                     await leaveHousehold(
                       household,

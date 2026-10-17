@@ -61,7 +61,9 @@ function TransferRow({
         </p>
       </div>
 
-      <p className="tnum shrink-0 font-bold text-slate-900">{formatPaise(transfer.amountPaise)}</p>
+      <p className="tnum shrink-0 whitespace-nowrap font-bold text-slate-900">
+        {formatPaise(transfer.amountPaise)}
+      </p>
     </li>
   );
 }
@@ -102,13 +104,19 @@ export function SettlementPanel({
             </Alert>
           ) : null}
 
-          {/* The two blocks the logged-in user actually has to act on. */}
+          {/*
+            The two blocks the logged-in user actually has to act on. Grid items
+            default to a min-content floor, and the rows below hold
+            non-wrapping names and amounts, so each column is told explicitly
+            that it may shrink.
+          */}
           {toSend.length > 0 || toReceive.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-800">
-                  <ArrowUpRight size={15} aria-hidden /> You need to send
-                  <span className="tnum ml-auto">{formatPaise(sendTotal)}</span>
+              <div className="min-w-0">
+                <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-amber-800">
+                  <ArrowUpRight size={15} className="shrink-0" aria-hidden />
+                  <span className="truncate">You need to send</span>
+                  <span className="tnum ml-auto shrink-0">{formatPaise(sendTotal)}</span>
                 </h3>
                 <ul className="mt-2 space-y-2">
                   {toSend.length > 0 ? (
@@ -123,10 +131,11 @@ export function SettlementPanel({
                 </ul>
               </div>
 
-              <div>
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
-                  <ArrowDownLeft size={15} aria-hidden /> You will receive
-                  <span className="tnum ml-auto">{formatPaise(receiveTotal)}</span>
+              <div className="min-w-0">
+                <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-emerald-800">
+                  <ArrowDownLeft size={15} className="shrink-0" aria-hidden />
+                  <span className="truncate">You will receive</span>
+                  <span className="tnum ml-auto shrink-0">{formatPaise(receiveTotal)}</span>
                 </h3>
                 <ul className="mt-2 space-y-2">
                   {toReceive.length > 0 ? (
@@ -200,7 +209,7 @@ export function SettlementPanel({
         ) : (
           <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
             {settlement.balances.map((balance) => (
-              <div key={balance.uid} className="rounded-xl border border-slate-200 p-4">
+              <div key={balance.uid} className="min-w-0 rounded-xl border border-slate-200 p-4">
                 <p className="truncate font-semibold text-slate-900">
                   {balance.name}
                   {balance.uid === currentUid ? " (you)" : ""}

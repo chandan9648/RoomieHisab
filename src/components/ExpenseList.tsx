@@ -86,7 +86,9 @@ export function ExpenseList({
                 </div>
 
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <p className="tnum font-bold text-slate-900">{formatPaise(expense.amountPaise)}</p>
+                  <p className="tnum whitespace-nowrap font-bold text-slate-900">
+                    {formatPaise(expense.amountPaise)}
+                  </p>
                   {editable ? (
                     <div className="-mr-2 flex items-center">
                       <IconButton

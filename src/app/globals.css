@@ -1,42 +1,100 @@
+
 @import "tailwindcss";
 
 /*
- * Design tokens. The palette is deliberately small: one indigo accent, a slate
- * neutral ramp, and three semantic colours (emerald for money coming back,
- * amber for money owed, rose for destructive actions).
+ * RoomieHisab design tokens.
+ * Indigo accent, slate neutrals, and semantic money colours.
  */
+
 :root {
   color-scheme: light;
+
   --app-bg: #f4f5f9;
   --app-surface: #ffffff;
   --app-ink: #0f172a;
   --app-muted: #64748b;
   --app-border: #e2e8f0;
-  /* Honours the iPhone home-indicator area under the bottom navigation. */
+
+  --app-accent: #4f46e5;
+  --app-accent-hover: #4338ca;
+
+  --app-success: #059669;
+  --app-warning: #d97706;
+  --app-danger: #e11d48;
+
+  /* iPhone home-indicator safe area */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-* {
+/* Consistent box sizing */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
+/* Base document styles */
+
 html {
-  /* Stops iOS Safari from inflating text in landscape. */
   -webkit-text-size-adjust: 100%;
+  scroll-behavior: auto;
+  scroll-padding-top: 1rem;
+
+  /*
+   * `clip` rather than `hidden`: both stop sideways scrolling, but `hidden`
+   * turns the element into a scroll container, which the sticky header then
+   * binds to instead of the viewport and which Lenis has to measure around.
+   * `clip` just clips, and it is the only one that can be set on a single axis
+   * without forcing the other axis to `auto`.
+   */
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+
   background: var(--app-bg);
   color: var(--app-ink);
+
   font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-    "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* Nothing in this layout is allowed to scroll sideways, down to 320px. */
-  overflow-x: hidden;
+
+  overflow-x: clip;
 }
+
+/* Lenis smooth scrolling */
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
+
+/* Form controls inherit the application's typography */
 
 button,
 input,
@@ -50,19 +108,40 @@ button {
   cursor: pointer;
 }
 
-/* A single consistent focus treatment for every interactive element. */
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Media elements remain responsive */
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+img,
+video {
+  height: auto;
+}
+
+/* Accessible keyboard focus */
+
 :focus-visible {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--app-accent);
   outline-offset: 2px;
   border-radius: 0.5rem;
 }
 
-/* Currency columns line up only with tabular figures. */
+/* Financial amounts align consistently */
+
 .tnum {
   font-variant-numeric: tabular-nums;
 }
 
-/* Visible to screen readers, invisible on screen. */
+/* Screen-reader-only content */
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -75,16 +154,46 @@ button {
   border-width: 0;
 }
 
+/* Mobile bottom navigation safe area */
+
 .pb-safe {
   padding-bottom: var(--safe-bottom);
 }
 
+/* Optional reusable surface utility */
+
+.app-surface {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+}
+
+/* Optional semantic money utilities */
+
+.text-money-in {
+  color: var(--app-success);
+}
+
+.text-money-out {
+  color: var(--app-danger);
+}
+
+.text-money-owed {
+  color: var(--app-warning);
+}
+
+/* Respect system accessibility preferences */
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
