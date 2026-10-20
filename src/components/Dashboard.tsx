@@ -4,20 +4,38 @@ import { useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import { Plus } from "lucide-react";
 
-import { ALL_TIME, currentMonthKey, formatMonthKey, matchesMonth, monthsWithData, type MonthFilter } from "@/lib/dates";
+import {
+  ALL_TIME,
+  currentMonthKey,
+  formatMonthKey,
+  matchesMonth,
+  monthRange,
+  monthsWithData,
+  todayISO,
+  type MonthFilter,
+} from "@/lib/dates";
 import { removeExpense } from "@/lib/expenses";
 import { calculateSettlement } from "@/lib/settlements";
 import { formatPaise } from "@/lib/money";
+import {
+  ALL_PAYERS,
+  matchesPayer,
+  spendByPayer,
+  totalPaise as sumPaise,
+  type PayerFilter,
+} from "@/lib/reports";
 import type { Expense } from "@/lib/types";
 import type { HouseholdState } from "@/hooks/useHousehold";
 
 import { AppHeader } from "./AppHeader";
 import { ExpenseFormModal } from "./ExpenseFormModal";
 import { ExpenseList } from "./ExpenseList";
+import { ExportModal } from "./ExportModal";
 import { HouseholdPanel } from "./HouseholdPanel";
 import { MemberBalances } from "./MemberBalances";
 import { MonthPicker } from "./MonthPicker";
 import { SettlementPanel } from "./SettlementPanel";
+import { SpendFilter } from "./SpendFilter";
 import { SummaryCards } from "./SummaryCards";
 import { BottomNav, TabBar, type TabId } from "./navigation";
 import { ConfirmDialog, type Confirmation } from "./ui/ConfirmDialog";
@@ -39,6 +57,8 @@ export function Dashboard({
 
   const [tab, setTab] = useState<TabId>("overview");
   const [month, setMonth] = useState<MonthFilter>(() => currentMonthKey());
+  const [payer, setPayer] = useState<PayerFilter>(ALL_PAYERS);
+  const [exportOpen, setExportOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -64,6 +84,34 @@ export function Dashboard({
   );
 
   const mine = settlement.balances.find((b) => b.uid === user.uid) ?? null;
+
+  // "Who spent what" for the selected month, which both the dropdown and its
+  // bars read from.
+  const breakdown = useMemo(() => spendByPayer(visible, members), [visible, members]);
+
+  // A former roommate can be chosen in one month and have no history in the
+  // next, which would leave the dropdown pointing at an option that is no
+  // longer there — fall back to everyone rather than show a blank control.
+  const selectedPayer =
+    payer !== ALL_PAYERS && !breakdown.some((p) => p.uid === payer) ? ALL_PAYERS : payer;
+
+  const listed = useMemo(
+    () => visible.filter((e) => matchesPayer(e, selectedPayer)),
+    [visible, selectedPayer],
+  );
+
+  /** What the export dialog opens on: the month on screen, or all history. */
+  const exportRange = useMemo(() => {
+    if (month !== ALL_TIME) return monthRange(month);
+    const dates = expenses.map((e) => e.date).filter(Boolean).sort();
+    const today = todayISO();
+    const latest = dates[dates.length - 1];
+    return {
+      startISO: dates[0] ?? monthRange(currentMonthKey()).startISO,
+      // A purchase dated ahead of today still belongs in the range.
+      endISO: latest && latest > today ? latest : today,
+    };
+  }, [month, expenses]);
 
   function openAdd() {
     setEditing(null);
@@ -185,13 +233,25 @@ export function Dashboard({
         ) : null}
 
         {tab === "expenses" ? (
-          <div id="panel-expenses" role="tabpanel">
+          <div id="panel-expenses" role="tabpanel" className="space-y-4">
+            <Card className="p-4">
+              <SpendFilter
+                value={selectedPayer}
+                onChange={setPayer}
+                breakdown={breakdown}
+                totalPaise={sumPaise(visible)}
+                entryCount={visible.length}
+                periodLabel={month === ALL_TIME ? "all spending" : `${monthLabel} spending`}
+                onExport={() => setExportOpen(true)}
+              />
+            </Card>
+
             <ExpenseList
               title={`Expenses · ${monthLabel}`}
-              subtitle={`${visible.length} ${visible.length === 1 ? "entry" : "entries"} · ${formatPaise(
-                settlement.totalPaise + settlement.ignored.totalPaise,
+              subtitle={`${listed.length} ${listed.length === 1 ? "entry" : "entries"} · ${formatPaise(
+                sumPaise(listed),
               )}`}
-              expenses={visible}
+              expenses={listed}
               members={members}
               currentUid={user.uid}
               currentRole={me?.role}
@@ -204,9 +264,11 @@ export function Dashboard({
                 </Button>
               }
               emptyDescription={
-                month === ALL_TIME
-                  ? "No expenses have been logged in this household yet."
-                  : `Nothing was logged in ${monthLabel}. Pick another month or add a purchase.`
+                selectedPayer !== ALL_PAYERS
+                  ? `Nothing was logged by this roommate in ${monthLabel}.`
+                  : month === ALL_TIME
+                    ? "No expenses have been logged in this household yet."
+                    : `Nothing was logged in ${monthLabel}. Pick another month or add a purchase.`
               }
             />
           </div>
@@ -264,6 +326,17 @@ export function Dashboard({
         currentRole={me?.role}
         onClose={() => setFormOpen(false)}
         onSaved={setNotice}
+      />
+
+      <ExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        expenses={expenses}
+        members={members}
+        householdName={household.name}
+        defaultRange={exportRange}
+        defaultPayer={selectedPayer}
+        onDownloaded={setNotice}
       />
 
       <ConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
