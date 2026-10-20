@@ -67,48 +67,21 @@ export function BottomNav({
       className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 pb-safe backdrop-blur sm:hidden"
     >
       <div className="grid grid-cols-4">
-        {TABS.map(({ id, label, icon: Icon }) => {
-          const current = active === id;
-
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-current={current ? "page" : undefined}
-              onClick={() => onChange(id)}
-              /*
-               * The active tab used to be marked by ink colour alone, which on a
-               * white bar at phone size reads as "all four look the same". It now
-               * carries three cues at once — a rail above it, a filled pill
-               * behind the icon, and a heavier glyph — so the current page is
-               * obvious at a glance and still legible to anyone who cannot tell
-               * indigo from slate.
-               */
-              className={cx(
-                "relative flex min-h-14 flex-col items-center justify-center gap-1 pt-1 text-[11px] font-semibold transition-colors",
-                current ? "text-indigo-700" : "text-slate-500 active:text-slate-700",
-              )}
-            >
-              <span
-                aria-hidden
-                className={cx(
-                  "absolute inset-x-5 top-0 h-[3px] rounded-b-full transition-colors",
-                  current ? "bg-indigo-600" : "bg-transparent",
-                )}
-              />
-              <span
-                aria-hidden
-                className={cx(
-                  "grid h-7 w-12 place-items-center rounded-full transition-colors",
-                  current ? "bg-indigo-100 text-indigo-700" : "bg-transparent",
-                )}
-              >
-                <Icon size={19} strokeWidth={current ? 2.6 : 2} />
-              </span>
-              {label}
-            </button>
-          );
-        })}
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            aria-current={active === id ? "page" : undefined}
+            onClick={() => onChange(id)}
+            className={cx(
+              "flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors",
+              active === id ? "text-indigo-600" : "text-slate-500",
+            )}
+          >
+            <Icon size={19} aria-hidden />
+            {label}
+          </button>
+        ))}
       </div>
     </nav>
   );
