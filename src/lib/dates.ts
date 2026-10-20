@@ -61,6 +61,16 @@ export function matchesMonth(dateISO: string, filter: MonthFilter): boolean {
   return filter === ALL_TIME || monthKeyOf(dateISO) === filter;
 }
 
+/**
+ * The first and last calendar day of "YYYY-MM". Day 0 of the *next* month is
+ * the last day of this one, which gets February right without a leap rule.
+ */
+export function monthRange(key: string): { startISO: string; endISO: string } {
+  const [y, m] = key.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return { startISO: `${key}-01`, endISO: `${key}-${pad(lastDay)}` };
+}
+
 /** The month before/after `key`, as "YYYY-MM". */
 export function shiftMonth(key: string, delta: number): string {
   const [y, m] = key.split("-").map(Number);
