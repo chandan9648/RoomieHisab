@@ -56,14 +56,19 @@ service cloud.firestore {
 
     function validHousehold(d) {
       return d.keys().hasAll(['name', 'createdBy', 'inviteCode', 'createdAt'])
-        && d.keys().hasOnly(['name', 'createdBy', 'inviteCode', 'createdAt', 'settlementStartDate'])
+        && d.keys().hasOnly([
+          'name', 'createdBy', 'inviteCode', 'createdAt',
+          'settlementStartDate', 'settlementStartedAt'
+        ])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 60
         && d.createdBy is string
         && d.inviteCode is string && d.inviteCode.size() >= 6 && d.inviteCode.size() <= 10
         && d.createdAt is number
         && (!d.keys().hasAny(['settlementStartDate'])
           || (d.settlementStartDate is string
-            && d.settlementStartDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')));
+            && d.settlementStartDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+        && (!d.keys().hasAny(['settlementStartedAt'])
+          || d.settlementStartedAt is number);
     }
 
     function validMember(d, memberId) {
@@ -157,7 +162,9 @@ service cloud.firestore {
           isAdmin(hid)
           || (
             isCreator(hid)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settlementStartDate'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'settlementStartDate', 'settlementStartedAt'
+            ])
           )
         );
 
@@ -240,8 +247,9 @@ service cloud.firestore {
             'actorUid', 'actorName', 'actorEmail', 'action', 'entityId', 'summary', 'timestamp'
           ])
           && request.resource.data.keys().hasOnly([
-            'actorUid', 'actorName', 'actorEmail', 'action', 'entityId', 'summary', 'timestamp'
-          ])
+              'actorUid', 'actorName', 'actorEmail', 'action', 'entityId', 'summary', 'timestamp',
+              'targetUid', 'targetName', 'targetEmail', 'details'
+            ])
           && request.resource.data.actorUid == uid()
           && request.resource.data.actorName is string
           && request.resource.data.actorName.size() > 0
@@ -256,7 +264,25 @@ service cloud.firestore {
           && request.resource.data.summary is string
           && request.resource.data.summary.size() > 0
           && request.resource.data.summary.size() <= 240
-          && request.resource.data.timestamp is number;
+          && request.resource.data.timestamp is number
+          && (!request.resource.data.keys().hasAny(['targetUid', 'targetName', 'targetEmail'])
+            || (
+              request.resource.data.keys().hasAll(['targetUid', 'targetName', 'targetEmail'])
+              && request.resource.data.targetUid is string
+              && request.resource.data.targetUid.size() > 0
+              && request.resource.data.targetUid.size() <= 128
+              && request.resource.data.targetName is string
+              && request.resource.data.targetName.size() > 0
+              && request.resource.data.targetName.size() <= 80
+              && request.resource.data.targetEmail is string
+              && request.resource.data.targetEmail.size() <= 320
+            ))
+          && (!request.resource.data.keys().hasAny(['details'])
+            || (
+              request.resource.data.details is string
+              && request.resource.data.details.size() > 0
+              && request.resource.data.details.size() <= 1000
+            ));
         allow update, delete: if false;
       }
     }

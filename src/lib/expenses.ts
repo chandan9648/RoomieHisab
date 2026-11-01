@@ -14,6 +14,26 @@ import { todayISO } from "./dates";
 import { validateDescription, validateExpenseDate, validateNotes } from "./validation";
 import type { ExpenseData, Member } from "./types";
 
+export type AuditTarget = Pick<Member, "uid" | "displayName" | "email">;
+
+function expenseDetails(data: ExpenseData): string {
+  return [
+    `Item: ${data.description}`,
+    `Amount: ₹${(data.amountPaise / 100).toFixed(2)}`,
+    `Date: ${data.date}`,
+    `Paid by: ${data.payerName}`,
+    data.notes ? `Notes: ${data.notes}` : "Notes: —",
+  ].join(" · ");
+}
+
+function updateSummary(previous: ExpenseData, next: ExpenseData): string {
+  const previousAmount = `₹${(previous.amountPaise / 100).toFixed(2)}`;
+  const nextAmount = `₹${(next.amountPaise / 100).toFixed(2)}`;
+  return previous.amountPaise === next.amountPaise
+    ? `Updated expense "${next.description}" (amount unchanged at ${nextAmount}).`
+    : `Updated expense "${next.description}" from ${previousAmount} to ${nextAmount}.`;
+}
+
 /** The raw strings an expense form holds. */
 export type ExpenseDraft = {
   description: string;
@@ -89,6 +109,7 @@ export async function createExpense(
   householdId: string,
   data: ExpenseData,
   actor: AuditActor,
+  target: AuditTarget,
 ): Promise<void> {
   const { db } = requireFirebase();
   const expense = doc(expensesRef(db, householdId));
@@ -97,9 +118,13 @@ export async function createExpense(
   batch.set(expense, data);
   batch.set(log, {
     ...actor,
+    targetUid: target.uid,
+    targetName: target.displayName,
+    targetEmail: target.email,
     action: "expense_created",
     entityId: expense.id,
     summary: `Added expense "${data.description}" for ₹${(data.amountPaise / 100).toFixed(2)}.`,
+    details: expenseDetails(data),
     timestamp: Date.now(),
   });
   await withTimeout(batch.commit(), "save the expense");
@@ -112,8 +137,10 @@ export async function createExpense(
 export async function saveExpense(
   householdId: string,
   expenseId: string,
+  previousData: ExpenseData,
   data: ExpenseData,
   actor: AuditActor,
+  target: AuditTarget,
 ): Promise<void> {
   const { db } = requireFirebase();
   const log = doc(auditLogsRef(db, householdId));
@@ -121,9 +148,13 @@ export async function saveExpense(
   batch.set(expenseRef(db, householdId, expenseId), data);
   batch.set(log, {
     ...actor,
+    targetUid: target.uid,
+    targetName: target.displayName,
+    targetEmail: target.email,
     action: "expense_updated",
     entityId: expenseId,
-    summary: `Updated expense "${data.description}" to ₹${(data.amountPaise / 100).toFixed(2)}.`,
+    summary: updateSummary(previousData, data),
+    details: `Before: ${expenseDetails(previousData)} · After: ${expenseDetails(data)}`,
     timestamp: Date.now(),
   });
   await withTimeout(
@@ -135,8 +166,9 @@ export async function saveExpense(
 export async function removeExpense(
   householdId: string,
   expenseId: string,
-  description: string,
+  data: ExpenseData,
   actor: AuditActor,
+  target: AuditTarget,
 ): Promise<void> {
   const { db } = requireFirebase();
   const log = doc(auditLogsRef(db, householdId));
@@ -144,15 +176,16 @@ export async function removeExpense(
   batch.delete(expenseRef(db, householdId, expenseId));
   batch.set(log, {
     ...actor,
+    targetUid: target.uid,
+    targetName: target.displayName,
+    targetEmail: target.email,
     action: "expense_deleted",
     entityId: expenseId,
-    summary: `Deleted expense "${description}".`,
+    summary: `Deleted expense "${data.description}".`,
+    details: expenseDetails(data),
     timestamp: Date.now(),
   });
-  await withTimeout(
-    batch.commit(),
-    "delete the expense",
-  );
+  await withTimeout(batch.commit(), "delete the expense");
 }
 
 /** The payer or a household admin may edit and delete; nobody else. */

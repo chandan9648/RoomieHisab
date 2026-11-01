@@ -79,10 +79,14 @@ export function ExpenseFormModal({
     setFormError("");
     try {
       if (expense) {
-        await saveExpense(householdId, expense.id, built.value, actor);
+        const target = members.find((member) => member.uid === built.value.paidBy);
+        if (!target) throw new Error("The expense payer is no longer a household member.");
+        await saveExpense(householdId, expense.id, expense, built.value, actor, target);
         onSaved("Expense updated.");
       } else {
-        await createExpense(householdId, built.value, actor);
+        const target = members.find((member) => member.uid === built.value.paidBy);
+        if (!target) throw new Error("Choose a household member who paid for this expense.");
+        await createExpense(householdId, built.value, actor, target);
         onSaved("Expense added. Everyone's totals just updated.");
       }
       onClose();

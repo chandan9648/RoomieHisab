@@ -14,8 +14,8 @@ import {
   todayISO,
   type MonthFilter,
 } from "@/lib/dates";
-import { removeExpense } from "@/lib/expenses";
 import { startSettlementCycle } from "@/lib/households";
+import { removeExpense } from "@/lib/expenses";
 import { calculateSettlement } from "@/lib/settlements";
 import { formatPaise } from "@/lib/money";
 import {
@@ -85,9 +85,11 @@ export function Dashboard({
     () =>
       visible.filter(
         (expense) =>
-          !household.settlementStartDate || expense.date >= household.settlementStartDate,
+          household.settlementStartedAt
+            ? expense.createdAt >= household.settlementStartedAt
+            : !household.settlementStartDate || expense.date >= household.settlementStartDate,
       ),
-    [household.settlementStartDate, visible],
+    [household.settlementStartDate, household.settlementStartedAt, visible],
   );
 
   const settlement = useMemo(
@@ -146,7 +148,9 @@ export function Dashboard({
       confirmLabel: "Delete expense",
       onConfirm: async () => {
         setError("");
-        await removeExpense(household.id, expense.id, expense.description, actor);
+        const target = members.find((member) => member.uid === expense.paidBy);
+        if (!target) throw new Error("The expense payer is no longer a household member.");
+        await removeExpense(household.id, expense.id, expense, actor, target);
         setNotice("Expense deleted.");
       },
     });

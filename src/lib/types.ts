@@ -10,6 +10,8 @@ export type Household = {
   createdAt: number;
   /** Local calendar day from which the current settlement cycle counts expenses. */
   settlementStartDate?: string;
+  /** Exact instant the cycle was reset, so same-day old expenses are settled too. */
+  settlementStartedAt?: number;
 };
 
 export type Member = {
@@ -54,6 +56,12 @@ export type AuditLog = {
   entityId: string;
   summary: string;
   timestamp: number;
+  /** The member whose expense was affected; absent on older logs and cycle logs. */
+  targetUid?: string;
+  targetName?: string;
+  targetEmail?: string;
+  /** Human-readable snapshot of the affected expense at the time of the action. */
+  details?: string;
 };
 
 export type UserProfile = {

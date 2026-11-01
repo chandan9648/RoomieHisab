@@ -100,7 +100,7 @@ export function SettlementPanel({
           icon={<Handshake size={18} aria-hidden />}
           action={canStartNewCycle ? (
             <Button
-              variant="secondary"
+              variant="danger"
               onClick={onStartNewCycle}
               icon={<CheckCircle2 size={16} aria-hidden />}
             >

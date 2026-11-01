@@ -266,16 +266,20 @@ export async function renameHousehold(householdId: string, rawName: string): Pro
   );
 }
 
-/** Marks all expenses before this local day as settled without deleting history. */
+/** Marks all expenses existing at this instant as settled without deleting history. */
 export async function startSettlementCycle(
   householdId: string,
   startDate: string,
   actor: AuditActor,
 ): Promise<void> {
   const { db } = requireFirebase();
+  const settlementStartedAt = Date.now();
   const log = auditLog(db, householdId, actor, "settlement_started", startDate, `Started a new settlement cycle from ${startDate}.`);
   const batch = writeBatch(db);
-  batch.update(householdRef(db, householdId), { settlementStartDate: startDate });
+  batch.update(householdRef(db, householdId), {
+    settlementStartDate: startDate,
+    settlementStartedAt,
+  });
   batch.set(log.ref, log.data);
   await withTimeout(
     batch.commit(),

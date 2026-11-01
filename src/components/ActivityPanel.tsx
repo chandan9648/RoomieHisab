@@ -37,6 +37,16 @@ export function ActivityPanel({ logs }: { logs: AuditLog[] }) {
                   {ACTION_LABELS[log.action]}
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-slate-600">{log.summary}</p>
+                {log.targetUid ? (
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                    <span className="font-semibold text-slate-700">Affected member:</span>{" "}
+                    {log.targetName || "Unknown"} · {log.targetEmail || "No email"} · ID:{" "}
+                    {log.targetUid}
+                  </p>
+                ) : null}
+                {log.details ? (
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">{log.details}</p>
+                ) : null}
                 <p className="mt-2 text-xs text-slate-500">
                   <span className="font-semibold text-slate-700">{log.actorName}</span>
                   {log.actorEmail ? ` · ${log.actorEmail}` : ""} ·{" "}
