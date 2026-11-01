@@ -15,6 +15,7 @@ import {
   type MonthFilter,
 } from "@/lib/dates";
 import { removeExpense } from "@/lib/expenses";
+import { startSettlementCycle } from "@/lib/households";
 import { calculateSettlement } from "@/lib/settlements";
 import { formatPaise } from "@/lib/money";
 import {
@@ -28,6 +29,7 @@ import type { Expense } from "@/lib/types";
 import type { HouseholdState } from "@/hooks/useHousehold";
 
 import { AppHeader } from "./AppHeader";
+import { ActivityPanel } from "./ActivityPanel";
 import { ExpenseFormModal } from "./ExpenseFormModal";
 import { ExpenseList } from "./ExpenseList";
 import { ExportModal } from "./ExportModal";
@@ -53,7 +55,12 @@ export function Dashboard({
   state: HouseholdState & { household: NonNullable<HouseholdState["household"]> };
   onSignOut: () => void;
 }) {
-  const { household, members, expenses, me, expensesLoading } = state;
+  const { household, members, expenses, auditLogs, me, expensesLoading } = state;
+  const actor = {
+    actorUid: user.uid,
+    actorName: user.displayName ?? user.email ?? "Roommate",
+    actorEmail: user.email ?? "",
+  };
 
   const [tab, setTab] = useState<TabId>("overview");
   const [month, setMonth] = useState<MonthFilter>(() => currentMonthKey());
@@ -74,13 +81,22 @@ export function Dashboard({
 
   // The settlement is derived purely from the selected month, which is what
   // makes month-end accounting work without ever deleting history.
+  const settlementExpenses = useMemo(
+    () =>
+      visible.filter(
+        (expense) =>
+          !household.settlementStartDate || expense.date >= household.settlementStartDate,
+      ),
+    [household.settlementStartDate, visible],
+  );
+
   const settlement = useMemo(
     () =>
       calculateSettlement(
         members.map((m) => ({ uid: m.uid, name: m.displayName })),
-        visible.map((e) => ({ paidBy: e.paidBy, amountPaise: e.amountPaise })),
+        settlementExpenses.map((e) => ({ paidBy: e.paidBy, amountPaise: e.amountPaise })),
       ),
-    [members, visible],
+    [members, settlementExpenses],
   );
 
   const mine = settlement.balances.find((b) => b.uid === user.uid) ?? null;
@@ -130,9 +146,32 @@ export function Dashboard({
       confirmLabel: "Delete expense",
       onConfirm: async () => {
         setError("");
-        await removeExpense(household.id, expense.id);
+        await removeExpense(household.id, expense.id, expense.description, actor);
         setNotice("Expense deleted.");
       },
+    });
+  }
+
+  function confirmStartSettlementCycle() {
+    const startDate = todayISO();
+    setConfirmation({
+      title: "Settle and start a new cycle?",
+      body: `All expenses before ${startDate} will be marked as settled for calculations. They will stay in your expense history, and expenses from today onward will be counted in the new cycle.`,
+      confirmLabel: "Start new cycle",
+      onConfirm: async () => {
+        setError("");
+        await startSettlementCycle(household.id, startDate, actor);
+        setNotice("Settled. A new expense cycle has started from today.");
+      },
+    });
+  }
+
+  function confirmSignOut() {
+    setConfirmation({
+      title: "Sign out of RoomieHisab?",
+      body: "You will need to sign in again to view this household and its expenses.",
+      confirmLabel: "Sign out",
+      onConfirm: onSignOut,
     });
   }
 
@@ -142,7 +181,12 @@ export function Dashboard({
 
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
-      <AppHeader household={household} user={user} onSignOut={onSignOut} onCopied={setNotice} />
+      <AppHeader
+        household={household}
+        user={user}
+        onSignOut={confirmSignOut}
+        onCopied={setNotice}
+      />
 
       <main className="mx-auto max-w-5xl px-4 py-5">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -286,7 +330,14 @@ export function Dashboard({
                 />
               </Card>
             ) : (
-              <SettlementPanel settlement={settlement} month={month} currentUid={user.uid} />
+              <SettlementPanel
+                settlement={settlement}
+                month={month}
+                currentUid={user.uid}
+                cycleStartDate={household.settlementStartDate}
+                onStartNewCycle={confirmStartSettlementCycle}
+                canStartNewCycle={me?.role === "admin" || household.createdBy === user.uid}
+              />
             )}
           </div>
         ) : null}
@@ -301,6 +352,12 @@ export function Dashboard({
               onNotice={setNotice}
               onConfirm={setConfirmation}
             />
+          </div>
+        ) : null}
+
+        {tab === "activity" ? (
+          <div id="panel-activity" role="tabpanel">
+            <ActivityPanel logs={auditLogs} />
           </div>
         ) : null}
       </main>
@@ -323,6 +380,7 @@ export function Dashboard({
         expense={editing}
         members={members}
         currentUid={user.uid}
+        actor={actor}
         currentRole={me?.role}
         onClose={() => setFormOpen(false)}
         onSaved={setNotice}

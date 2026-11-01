@@ -30,7 +30,7 @@ import { requireFirebase } from "./firebase";
 import { isPermissionDenied, withTimeout } from "./errors";
 import { generateInviteCode, normaliseInviteCode } from "./invite";
 import { safeMemberName, validateHouseholdName } from "./validation";
-import type { Household, Invite, Member, UserProfile } from "./types";
+import type { AuditAction, AuditLog, Household, Invite, Member, UserProfile } from "./types";
 
 export const householdRef = (db: Firestore, id: string) => doc(db, "households", id);
 export const membersRef = (db: Firestore, id: string) => collection(db, "households", id, "members");
@@ -42,6 +42,25 @@ export const expenseRef = (db: Firestore, id: string, expenseId: string) =>
   doc(db, "households", id, "expenses", expenseId);
 export const profileRef = (db: Firestore, uid: string) => doc(db, "users", uid);
 export const inviteRef = (db: Firestore, code: string) => doc(db, "invites", code);
+export const auditLogsRef = (db: Firestore, id: string) =>
+  collection(db, "households", id, "auditLogs");
+
+export type AuditActor = Pick<AuditLog, "actorUid" | "actorName" | "actorEmail">;
+
+function auditLog(
+  db: Firestore,
+  householdId: string,
+  actor: AuditActor,
+  action: AuditAction,
+  entityId: string,
+  summary: string,
+) {
+  const ref = doc(auditLogsRef(db, householdId));
+  return {
+    ref,
+    data: { ...actor, action, entityId, summary, timestamp: Date.now() } satisfies Omit<AuditLog, "id">,
+  };
+}
 
 /** The profile fields refreshed from the Google account on every sign-in. */
 function identity(user: User) {
@@ -244,6 +263,23 @@ export async function renameHousehold(householdId: string, rawName: string): Pro
   await withTimeout(
     updateDoc(householdRef(db, householdId), { name: name.value }),
     "rename the household",
+  );
+}
+
+/** Marks all expenses before this local day as settled without deleting history. */
+export async function startSettlementCycle(
+  householdId: string,
+  startDate: string,
+  actor: AuditActor,
+): Promise<void> {
+  const { db } = requireFirebase();
+  const log = auditLog(db, householdId, actor, "settlement_started", startDate, `Started a new settlement cycle from ${startDate}.`);
+  const batch = writeBatch(db);
+  batch.update(householdRef(db, householdId), { settlementStartDate: startDate });
+  batch.set(log.ref, log.data);
+  await withTimeout(
+    batch.commit(),
+    "start a new settlement cycle",
   );
 }
 

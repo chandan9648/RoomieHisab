@@ -56,11 +56,14 @@ service cloud.firestore {
 
     function validHousehold(d) {
       return d.keys().hasAll(['name', 'createdBy', 'inviteCode', 'createdAt'])
-        && d.keys().hasOnly(['name', 'createdBy', 'inviteCode', 'createdAt'])
+        && d.keys().hasOnly(['name', 'createdBy', 'inviteCode', 'createdAt', 'settlementStartDate'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 60
         && d.createdBy is string
         && d.inviteCode is string && d.inviteCode.size() >= 6 && d.inviteCode.size() <= 10
-        && d.createdAt is number;
+        && d.createdAt is number
+        && (!d.keys().hasAny(['settlementStartDate'])
+          || (d.settlementStartDate is string
+            && d.settlementStartDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')));
     }
 
     function validMember(d, memberId) {
@@ -147,10 +150,16 @@ service cloud.firestore {
 
       // Admins may rename the flat and rotate the invite code; identity and
       // creation time are immutable.
-      allow update: if isAdmin(hid)
-        && validHousehold(request.resource.data)
+      allow update: if validHousehold(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          isAdmin(hid)
+          || (
+            isCreator(hid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settlementStartDate'])
+          )
+        );
 
       allow delete: if signedIn() && resource.data.createdBy == uid();
 
@@ -220,6 +229,35 @@ service cloud.firestore {
 
         allow delete: if isMember(hid)
           && (resource.data.paidBy == uid() || isAdmin(hid));
+      }
+
+      // Immutable activity history. Every mutation writes its matching log in
+      // the same batch, and only the authenticated actor may claim the action.
+      match /auditLogs/{logId} {
+        allow read: if isMember(hid);
+        allow create: if isMember(hid)
+          && request.resource.data.keys().hasAll([
+            'actorUid', 'actorName', 'actorEmail', 'action', 'entityId', 'summary', 'timestamp'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'actorUid', 'actorName', 'actorEmail', 'action', 'entityId', 'summary', 'timestamp'
+          ])
+          && request.resource.data.actorUid == uid()
+          && request.resource.data.actorName is string
+          && request.resource.data.actorName.size() > 0
+          && request.resource.data.actorName.size() <= 80
+          && request.resource.data.actorEmail is string
+          && request.resource.data.actorEmail.size() <= 320
+          && request.resource.data.action in [
+            'expense_created', 'expense_updated', 'expense_deleted', 'settlement_started'
+          ]
+          && request.resource.data.entityId is string
+          && request.resource.data.entityId.size() <= 100
+          && request.resource.data.summary is string
+          && request.resource.data.summary.size() > 0
+          && request.resource.data.summary.size() <= 240
+          && request.resource.data.timestamp is number;
+        allow update, delete: if false;
       }
     }
   }

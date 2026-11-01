@@ -8,6 +8,8 @@ export type Household = {
   createdBy: string;
   inviteCode: string;
   createdAt: number;
+  /** Local calendar day from which the current settlement cycle counts expenses. */
+  settlementStartDate?: string;
 };
 
 export type Member = {
@@ -36,6 +38,23 @@ export type Expense = {
 
 /** An expense as it is written to Firestore — the id comes from the document. */
 export type ExpenseData = Omit<Expense, "id">;
+
+export type AuditAction =
+  | "expense_created"
+  | "expense_updated"
+  | "expense_deleted"
+  | "settlement_started";
+
+export type AuditLog = {
+  id: string;
+  actorUid: string;
+  actorName: string;
+  actorEmail: string;
+  action: AuditAction;
+  entityId: string;
+  summary: string;
+  timestamp: number;
+};
 
 export type UserProfile = {
   uid: string;

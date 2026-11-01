@@ -26,6 +26,7 @@ export function ExpenseFormModal({
   expense,
   members,
   currentUid,
+  actor,
   currentRole,
   onClose,
   onSaved,
@@ -36,6 +37,7 @@ export function ExpenseFormModal({
   expense: Expense | null;
   members: Member[];
   currentUid: string;
+  actor: { actorUid: string; actorName: string; actorEmail: string };
   currentRole: Member["role"] | undefined;
   onClose: () => void;
   onSaved: (message: string) => void;
@@ -77,10 +79,10 @@ export function ExpenseFormModal({
     setFormError("");
     try {
       if (expense) {
-        await saveExpense(householdId, expense.id, built.value);
+        await saveExpense(householdId, expense.id, built.value, actor);
         onSaved("Expense updated.");
       } else {
-        await createExpense(householdId, built.value);
+        await createExpense(householdId, built.value, actor);
         onSaved("Expense added. Everyone's totals just updated.");
       }
       onClose();

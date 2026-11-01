@@ -4,11 +4,11 @@
  * bypasses the UI is rejected by the server too.
  */
 
-import { addDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { doc, writeBatch } from "firebase/firestore";
 
 import { requireFirebase } from "./firebase";
 import { withTimeout } from "./errors";
-import { expenseRef, expensesRef } from "./households";
+import { auditLogsRef, expenseRef, expensesRef, type AuditActor } from "./households";
 import { parseAmountToPaise } from "./money";
 import { todayISO } from "./dates";
 import { validateDescription, validateExpenseDate, validateNotes } from "./validation";
@@ -85,9 +85,24 @@ export function buildExpense(
   };
 }
 
-export async function createExpense(householdId: string, data: ExpenseData): Promise<void> {
+export async function createExpense(
+  householdId: string,
+  data: ExpenseData,
+  actor: AuditActor,
+): Promise<void> {
   const { db } = requireFirebase();
-  await withTimeout(addDoc(expensesRef(db, householdId), data), "save the expense");
+  const expense = doc(expensesRef(db, householdId));
+  const log = doc(auditLogsRef(db, householdId));
+  const batch = writeBatch(db);
+  batch.set(expense, data);
+  batch.set(log, {
+    ...actor,
+    action: "expense_created",
+    entityId: expense.id,
+    summary: `Added expense "${data.description}" for ₹${(data.amountPaise / 100).toFixed(2)}.`,
+    timestamp: Date.now(),
+  });
+  await withTimeout(batch.commit(), "save the expense");
 }
 
 /**
@@ -98,18 +113,44 @@ export async function saveExpense(
   householdId: string,
   expenseId: string,
   data: ExpenseData,
+  actor: AuditActor,
 ): Promise<void> {
   const { db } = requireFirebase();
+  const log = doc(auditLogsRef(db, householdId));
+  const batch = writeBatch(db);
+  batch.set(expenseRef(db, householdId, expenseId), data);
+  batch.set(log, {
+    ...actor,
+    action: "expense_updated",
+    entityId: expenseId,
+    summary: `Updated expense "${data.description}" to ₹${(data.amountPaise / 100).toFixed(2)}.`,
+    timestamp: Date.now(),
+  });
   await withTimeout(
-    setDoc(expenseRef(db, householdId, expenseId), data),
+    batch.commit(),
     "update the expense",
   );
 }
 
-export async function removeExpense(householdId: string, expenseId: string): Promise<void> {
+export async function removeExpense(
+  householdId: string,
+  expenseId: string,
+  description: string,
+  actor: AuditActor,
+): Promise<void> {
   const { db } = requireFirebase();
+  const log = doc(auditLogsRef(db, householdId));
+  const batch = writeBatch(db);
+  batch.delete(expenseRef(db, householdId, expenseId));
+  batch.set(log, {
+    ...actor,
+    action: "expense_deleted",
+    entityId: expenseId,
+    summary: `Deleted expense "${description}".`,
+    timestamp: Date.now(),
+  });
   await withTimeout(
-    deleteDoc(expenseRef(db, householdId, expenseId)),
+    batch.commit(),
     "delete the expense",
   );
 }

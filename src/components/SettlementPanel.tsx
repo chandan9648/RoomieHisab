@@ -2,10 +2,10 @@
 
 import { ArrowDownLeft, ArrowRight, ArrowUpRight, CheckCircle2, Handshake, Info } from "lucide-react";
 
-import { formatMonthKey, type MonthFilter } from "@/lib/dates";
+import { formatDateISO, formatMonthKey, type MonthFilter } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { transfersForUser, type Settlement, type Transfer } from "@/lib/settlements";
-import { Alert, Card, CardHeader, EmptyState, cx } from "./ui/primitives";
+import { Alert, Button, Card, CardHeader, EmptyState, cx } from "./ui/primitives";
 
 function TransferRow({
   transfer,
@@ -72,10 +72,16 @@ export function SettlementPanel({
   settlement,
   month,
   currentUid,
+  cycleStartDate,
+  onStartNewCycle,
+  canStartNewCycle,
 }: {
   settlement: Settlement;
   month: MonthFilter;
   currentUid: string;
+  cycleStartDate?: string;
+  onStartNewCycle: () => void;
+  canStartNewCycle: boolean;
 }) {
   const { toSend, toReceive } = transfersForUser(settlement.transfers, currentUid);
   const sendTotal = toSend.reduce((sum, t) => sum + t.amountPaise, 0);
@@ -92,9 +98,25 @@ export function SettlementPanel({
               : "Waiting for members"
           }
           icon={<Handshake size={18} aria-hidden />}
+          action={canStartNewCycle ? (
+            <Button
+              variant="secondary"
+              onClick={onStartNewCycle}
+              icon={<CheckCircle2 size={16} aria-hidden />}
+            >
+              <span className="sm:hidden">New cycle</span>
+              <span className="hidden sm:inline">Settle & start new cycle</span>
+            </Button>
+          ) : undefined}
         />
 
         <div className="space-y-4 p-4 sm:p-5">
+          {cycleStartDate ? (
+            <Alert tone="info">
+              This cycle includes expenses from {formatDateISO(cycleStartDate)} onward. Older
+              expenses remain in history but are already settled.
+            </Alert>
+          ) : null}
           {settlement.ignored.count > 0 ? (
             <Alert tone="info">
               {settlement.ignored.count} expense{settlement.ignored.count === 1 ? "" : "s"} worth{" "}

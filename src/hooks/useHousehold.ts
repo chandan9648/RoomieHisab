@@ -7,6 +7,7 @@ import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { describeError, isPermissionDenied } from "@/lib/errors";
 import {
+  auditLogsRef,
   ensureProfile,
   expensesRef,
   householdRef,
@@ -14,7 +15,7 @@ import {
   membersRef,
   profileRef,
 } from "@/lib/households";
-import type { Expense, Household, Member, UserProfile } from "@/lib/types";
+import type { AuditLog, Expense, Household, Member, UserProfile } from "@/lib/types";
 
 export type HouseholdState = {
   /** True while we still do not know whether the user has a household. */
@@ -23,6 +24,7 @@ export type HouseholdState = {
   household: Household | null;
   members: Member[];
   expenses: Expense[];
+  auditLogs: AuditLog[];
   error: string;
   /** True until the first expenses snapshot lands, for the list skeleton. */
   expensesLoading: boolean;
@@ -38,6 +40,7 @@ const EMPTY: HouseholdState = {
   household: null,
   members: [],
   expenses: [],
+  auditLogs: [],
   error: "",
   expensesLoading: true,
   accessDenied: false,
@@ -106,6 +109,7 @@ export function useHousehold(user: User | null): HouseholdState {
   const [household, setHousehold] = useState<Household | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [householdLoading, setHouseholdLoading] = useState(false);
   // Tracked separately so the dashboard does not flash "no members yet" in the
   // gap between the household document and the members snapshot arriving.
@@ -126,48 +130,75 @@ export function useHousehold(user: User | null): HouseholdState {
 
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
 
     setProfileLoading(true);
     setProfileError("");
 
     (async () => {
       try {
-        try {
-          await ensureProfile(user);
-        } catch (caught) {
-          // The same stale-token race as the household listeners below: the
-          // first write after a sign-in can land before the token does.
-          if (!isPermissionDenied(caught)) throw caught;
-          await user.getIdToken(true).catch(() => undefined);
-          if (cancelled) return;
-          await ensureProfile(user);
+        while (true) {
+          try {
+            await ensureProfile(user);
+            break;
+          } catch (caught) {
+            // A newly restored Firebase session can briefly expose an old
+            // token. Refresh it before treating the profile as unavailable.
+            if (!isPermissionDenied(caught) || attempts >= MAX_RECOVERY_ATTEMPTS) {
+              throw caught;
+            }
+            attempts += 1;
+            await user.getIdToken(true).catch(() => undefined);
+            if (cancelled) return;
+          }
         }
       } catch (caught) {
         if (!cancelled) {
-          setProfileError(describeError(caught));
+          setProfileError(
+            isPermissionDenied(caught)
+              ? "Could not load your account profile. Refresh the page and try again."
+              : describeError(caught),
+          );
           setProfileLoading(false);
         }
         return;
       }
       if (cancelled || !db) return;
 
-      unsubscribe = onSnapshot(
-        profileRef(db, user.uid),
-        (snap) => {
-          if (cancelled) return;
-          setProfile(snap.exists() ? (snap.data() as UserProfile) : null);
-          setProfileLoading(false);
-        },
-        (caught) => {
-          if (cancelled) return;
-          setProfileError(describeError(caught));
-          setProfileLoading(false);
-        },
-      );
+      const listen = () => {
+        if (cancelled || !db) return;
+        unsubscribe = onSnapshot(
+          profileRef(db, user.uid),
+          (snap) => {
+            if (cancelled) return;
+            setProfile(snap.exists() ? (snap.data() as UserProfile) : null);
+            setProfileError("");
+            setProfileLoading(false);
+          },
+          (caught) => {
+            if (cancelled) return;
+            if (isPermissionDenied(caught) && attempts < MAX_RECOVERY_ATTEMPTS) {
+              attempts += 1;
+              void user.getIdToken(true).catch(() => undefined);
+              retryTimer = setTimeout(listen, RECOVERY_DELAY_MS * attempts);
+              return;
+            }
+            setProfileError(
+              isPermissionDenied(caught)
+                ? "Could not load your account profile. Refresh the page and try again."
+                : describeError(caught),
+            );
+            setProfileLoading(false);
+          },
+        );
+      };
+      listen();
     })();
 
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
       unsubscribe?.();
     };
   }, [user]);
@@ -181,6 +212,7 @@ export function useHousehold(user: User | null): HouseholdState {
       setHousehold(null);
       setMembers([]);
       setExpenses([]);
+      setAuditLogs([]);
       setHouseholdLoading(false);
       setMembersLoaded(false);
       setExpensesLoaded(false);
@@ -251,6 +283,24 @@ export function useHousehold(user: User | null): HouseholdState {
           },
           fail,
         ),
+        onSnapshot(
+          auditLogsRef(firestore, householdId),
+          (snap) => {
+            if (cancelled) return;
+            setAuditLogs(
+              snap.docs
+                .map((d) => ({ ...(d.data() as Omit<AuditLog, "id">), id: d.id }))
+                .sort((a, b) => b.timestamp - a.timestamp || b.id.localeCompare(a.id)),
+            );
+          },
+          (caught) => {
+            // Activity history is optional for loading the household. An older
+            // deployed ruleset may not have the auditLogs match yet; that must
+            // not make an otherwise valid member look removed.
+            console.warn("[household] activity log unavailable", caught);
+            setAuditLogs([]);
+          },
+        ),
       ];
     };
 
@@ -314,6 +364,7 @@ export function useHousehold(user: User | null): HouseholdState {
     household,
     members,
     expenses,
+    auditLogs,
     error: profileError || householdError,
     expensesLoading: Boolean(activeId) && !expensesLoaded,
     accessDenied,

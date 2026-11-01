@@ -5,7 +5,7 @@
  * control, so the two can never drift apart.
  */
 
-import { Handshake, Home, ReceiptText, Users } from "lucide-react";
+import { Activity, Handshake, Home, ReceiptText, Users } from "lucide-react";
 
 import { cx } from "./ui/primitives";
 
@@ -14,6 +14,7 @@ export const TABS = [
   { id: "expenses", label: "Expenses", icon: ReceiptText },
   { id: "settle", label: "Settle", icon: Handshake },
   { id: "flat", label: "Flat", icon: Users },
+  { id: "activity", label: "Activity", icon: Activity },
 ] as const;
 
 export type TabId = (typeof TABS)[number]["id"];
@@ -66,7 +67,7 @@ export function BottomNav({
       aria-label="Dashboard sections"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 pb-safe backdrop-blur sm:hidden"
     >
-      <div className="grid grid-cols-4">
+      <div className="grid grid-cols-5">
         {TABS.map(({ id, label, icon: Icon }) => {
           const current = active === id;
 
