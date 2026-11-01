@@ -5,6 +5,7 @@ import { ArrowDownLeft, ArrowRight, ArrowUpRight, CheckCircle2, Handshake, Info 
 import { formatDateISO, formatMonthKey, type MonthFilter } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { transfersForUser, type Settlement, type Transfer } from "@/lib/settlements";
+import type { SettlementRecord } from "@/lib/types";
 import { Alert, Button, Card, CardHeader, EmptyState, cx } from "./ui/primitives";
 
 function TransferRow({
@@ -75,6 +76,7 @@ export function SettlementPanel({
   cycleStartDate,
   onStartNewCycle,
   canStartNewCycle,
+  settlementRecords,
 }: {
   settlement: Settlement;
   month: MonthFilter;
@@ -82,6 +84,7 @@ export function SettlementPanel({
   cycleStartDate?: string;
   onStartNewCycle: () => void;
   canStartNewCycle: boolean;
+  settlementRecords: SettlementRecord[];
 }) {
   const { toSend, toReceive } = transfersForUser(settlement.transfers, currentUid);
   const sendTotal = toSend.reduce((sum, t) => sum + t.amountPaise, 0);
@@ -218,6 +221,62 @@ export function SettlementPanel({
             </p>
           ) : null}
         </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Settlement history"
+          subtitle="Previous cycles are saved as date-range records"
+          icon={<CheckCircle2 size={18} aria-hidden />}
+        />
+        {settlementRecords.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle2 size={22} aria-hidden />}
+            title="No completed cycles yet"
+            description="After settling a cycle, its date range and total will appear here."
+          />
+        ) : (
+          <ol className="divide-y divide-slate-100">
+            {settlementRecords.map((record) => (
+              <li key={record.id} className="p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {formatDateISO(record.startDate)} – {formatDateISO(record.endDate)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {record.expenseCount}{" "}
+                    {record.expenseCount === 1 ? "expense" : "expenses"} settled
+                  </p>
+                  </div>
+                  <p className="tnum shrink-0 font-bold text-slate-900">
+                    {formatPaise(record.totalPaise)}
+                  </p>
+                </div>
+                <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+                    View all expense details
+                  </summary>
+                  <ul className="mt-3 space-y-2">
+                    {(record.expenses ?? []).map((expense) => (
+                      <li key={expense.id} className="rounded-lg bg-white p-3 text-xs text-slate-600">
+                        <p className="font-semibold text-slate-900">
+                          {expense.description} · {formatPaise(expense.amountPaise)}
+                        </p>
+                        <p className="mt-1">
+                          {formatDateISO(expense.date)} · Paid by {expense.payerName} · UID: {expense.paidBy}
+                        </p>
+                        <p className="mt-1">
+                          Notes: {expense.notes || "—"} · Expense ID: {expense.id}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </li>
+            ))}
+          </ol>
+        )}
       </Card>
 
       <Card>

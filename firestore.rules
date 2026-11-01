@@ -285,6 +285,29 @@ service cloud.firestore {
             ));
         allow update, delete: if false;
       }
+
+      match /settlementRecords/{recordId} {
+        allow read: if isMember(hid);
+        allow create: if isMember(hid)
+          && request.resource.data.keys().hasAll([
+            'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt'
+          ])
+          && request.resource.data.startDate is string
+          && request.resource.data.startDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.endDate is string
+          && request.resource.data.endDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.totalPaise is int
+          && request.resource.data.totalPaise >= 0
+          && request.resource.data.expenseCount is int
+          && request.resource.data.expenseCount >= 0
+          && request.resource.data.settledAt is number
+          && request.resource.data.expenses is list
+          && request.resource.data.expenses.size() == request.resource.data.expenseCount;
+        allow update, delete: if false;
+      }
     }
   }
 }

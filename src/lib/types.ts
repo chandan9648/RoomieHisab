@@ -14,6 +14,25 @@ export type Household = {
   settlementStartedAt?: number;
 };
 
+export type SettlementRecord = {
+  id: string;
+  startDate: string;
+  endDate: string;
+  totalPaise: number;
+  expenseCount: number;
+  settledAt: number;
+  expenses: Array<{
+    id: string;
+    description: string;
+    amountPaise: number;
+    date: string;
+    paidBy: string;
+    payerName: string;
+    notes: string;
+    createdAt: number;
+  }>;
+};
+
 export type Member = {
   uid: string;
   displayName: string;

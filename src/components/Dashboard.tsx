@@ -41,6 +41,7 @@ import { SpendFilter } from "./SpendFilter";
 import { SummaryCards } from "./SummaryCards";
 import { BottomNav, TabBar, type TabId } from "./navigation";
 import { ConfirmDialog, type Confirmation } from "./ui/ConfirmDialog";
+import { Modal } from "./ui/Modal";
 import { Alert, Button, Card, CardHeader, EmptyState } from "./ui/primitives";
 
 const RECENT_COUNT = 5;
@@ -55,7 +56,7 @@ export function Dashboard({
   state: HouseholdState & { household: NonNullable<HouseholdState["household"]> };
   onSignOut: () => void;
 }) {
-  const { household, members, expenses, auditLogs, me, expensesLoading } = state;
+  const { household, members, expenses, auditLogs, settlementRecords, me, expensesLoading } = state;
   const actor = {
     actorUid: user.uid,
     actorName: user.displayName ?? user.email ?? "Roommate",
@@ -71,6 +72,9 @@ export function Dashboard({
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [settlementRangeOpen, setSettlementRangeOpen] = useState(false);
+  const [settlementStartDate, setSettlementStartDate] = useState("");
+  const [settlementEndDate, setSettlementEndDate] = useState(todayISO());
 
   const months = useMemo(() => monthsWithData(expenses.map((e) => e.date)), [expenses]);
 
@@ -157,15 +161,37 @@ export function Dashboard({
   }
 
   function confirmStartSettlementCycle() {
-    const startDate = todayISO();
+    const dates = expenses.map((expense) => expense.date).sort();
+    setSettlementStartDate(dates[0] ?? todayISO());
+    setSettlementEndDate(todayISO());
+    setSettlementRangeOpen(true);
+  }
+
+  async function submitSettlementRange() {
+    if (!settlementStartDate || !settlementEndDate || settlementStartDate > settlementEndDate) {
+      setError("Choose a valid settlement date range.");
+      return;
+    }
+    const selectedExpenses = expenses.filter(
+      (expense) => expense.date >= settlementStartDate && expense.date <= settlementEndDate,
+    );
+    setSettlementRangeOpen(false);
     setConfirmation({
       title: "Settle and start a new cycle?",
-      body: `All expenses before ${startDate} will be marked as settled for calculations. They will stay in your expense history, and expenses from today onward will be counted in the new cycle.`,
+      body: `${selectedExpenses.length} expense${selectedExpenses.length === 1 ? "" : "s"} from ${settlementStartDate} to ${settlementEndDate} will be saved with full details, then permanently removed.`,
       confirmLabel: "Start new cycle",
       onConfirm: async () => {
         setError("");
-        await startSettlementCycle(household.id, startDate, actor);
-        setNotice("Settled. A new expense cycle has started from today.");
+        await startSettlementCycle(
+          household.id,
+          settlementStartDate,
+          settlementEndDate,
+          actor,
+          selectedExpenses,
+        );
+        setMonth(currentMonthKey());
+        setPayer(ALL_PAYERS);
+        setNotice("Settled. A new expense cycle has started.");
       },
     });
   }
@@ -185,6 +211,46 @@ export function Dashboard({
 
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
+      <Modal
+        open={settlementRangeOpen}
+        title="Choose settlement date range"
+        description="Expenses in this range will be saved in settlement history and removed from the current list."
+        onClose={() => setSettlementRangeOpen(false)}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={() => setSettlementRangeOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void submitSettlementRange()}>
+              Continue
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-sm font-semibold text-slate-700">
+            From
+            <input
+              type="date"
+              value={settlementStartDate}
+              max={settlementEndDate}
+              onChange={(event) => setSettlementStartDate(event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 font-normal text-slate-900"
+            />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            To
+            <input
+              type="date"
+              value={settlementEndDate}
+              min={settlementStartDate}
+              max={todayISO()}
+              onChange={(event) => setSettlementEndDate(event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 font-normal text-slate-900"
+            />
+          </label>
+        </div>
+      </Modal>
       <AppHeader
         household={household}
         user={user}
@@ -339,6 +405,7 @@ export function Dashboard({
                 month={month}
                 currentUid={user.uid}
                 cycleStartDate={household.settlementStartDate}
+                settlementRecords={settlementRecords}
                 onStartNewCycle={confirmStartSettlementCycle}
                 canStartNewCycle={me?.role === "admin" || household.createdBy === user.uid}
               />

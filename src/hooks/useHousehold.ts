@@ -14,8 +14,9 @@ import {
   memberRef,
   membersRef,
   profileRef,
+  settlementRecordsRef,
 } from "@/lib/households";
-import type { AuditLog, Expense, Household, Member, UserProfile } from "@/lib/types";
+import type { AuditLog, Expense, Household, Member, SettlementRecord, UserProfile } from "@/lib/types";
 
 export type HouseholdState = {
   /** True while we still do not know whether the user has a household. */
@@ -25,6 +26,7 @@ export type HouseholdState = {
   members: Member[];
   expenses: Expense[];
   auditLogs: AuditLog[];
+  settlementRecords: SettlementRecord[];
   error: string;
   /** True until the first expenses snapshot lands, for the list skeleton. */
   expensesLoading: boolean;
@@ -41,6 +43,7 @@ const EMPTY: HouseholdState = {
   members: [],
   expenses: [],
   auditLogs: [],
+  settlementRecords: [],
   error: "",
   expensesLoading: true,
   accessDenied: false,
@@ -110,6 +113,7 @@ export function useHousehold(user: User | null): HouseholdState {
   const [members, setMembers] = useState<Member[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [settlementRecords, setSettlementRecords] = useState<SettlementRecord[]>([]);
   const [householdLoading, setHouseholdLoading] = useState(false);
   // Tracked separately so the dashboard does not flash "no members yet" in the
   // gap between the household document and the members snapshot arriving.
@@ -213,6 +217,7 @@ export function useHousehold(user: User | null): HouseholdState {
       setMembers([]);
       setExpenses([]);
       setAuditLogs([]);
+      setSettlementRecords([]);
       setHouseholdLoading(false);
       setMembersLoaded(false);
       setExpensesLoaded(false);
@@ -301,6 +306,21 @@ export function useHousehold(user: User | null): HouseholdState {
             setAuditLogs([]);
           },
         ),
+        onSnapshot(
+          settlementRecordsRef(firestore, householdId),
+          (snap) => {
+            if (cancelled) return;
+            setSettlementRecords(
+              snap.docs
+                .map((d) => ({ ...(d.data() as Omit<SettlementRecord, "id">), id: d.id }))
+                .sort((a, b) => b.settledAt - a.settledAt),
+            );
+          },
+          (caught) => {
+            console.warn("[household] settlement history unavailable", caught);
+            setSettlementRecords([]);
+          },
+        ),
       ];
     };
 
@@ -365,6 +385,7 @@ export function useHousehold(user: User | null): HouseholdState {
     members,
     expenses,
     auditLogs,
+    settlementRecords,
     error: profileError || householdError,
     expensesLoading: Boolean(activeId) && !expensesLoaded,
     accessDenied,

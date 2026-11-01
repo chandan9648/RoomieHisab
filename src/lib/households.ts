@@ -30,7 +30,15 @@ import { requireFirebase } from "./firebase";
 import { isPermissionDenied, withTimeout } from "./errors";
 import { generateInviteCode, normaliseInviteCode } from "./invite";
 import { safeMemberName, validateHouseholdName } from "./validation";
-import type { AuditAction, AuditLog, Household, Invite, Member, UserProfile } from "./types";
+import type {
+  AuditAction,
+  AuditLog,
+  Expense,
+  Household,
+  Invite,
+  Member,
+  UserProfile,
+} from "./types";
 
 export const householdRef = (db: Firestore, id: string) => doc(db, "households", id);
 export const membersRef = (db: Firestore, id: string) => collection(db, "households", id, "members");
@@ -44,6 +52,8 @@ export const profileRef = (db: Firestore, uid: string) => doc(db, "users", uid);
 export const inviteRef = (db: Firestore, code: string) => doc(db, "invites", code);
 export const auditLogsRef = (db: Firestore, id: string) =>
   collection(db, "households", id, "auditLogs");
+export const settlementRecordsRef = (db: Firestore, id: string) =>
+  collection(db, "households", id, "settlementRecords");
 
 export type AuditActor = Pick<AuditLog, "actorUid" | "actorName" | "actorEmail">;
 
@@ -266,25 +276,67 @@ export async function renameHousehold(householdId: string, rawName: string): Pro
   );
 }
 
-/** Marks all expenses existing at this instant as settled without deleting history. */
+/** Saves a settlement summary and permanently removes the settled expenses. */
 export async function startSettlementCycle(
   householdId: string,
   startDate: string,
+  endDate: string,
   actor: AuditActor,
+  expenses: Expense[],
 ): Promise<void> {
   const { db } = requireFirebase();
   const settlementStartedAt = Date.now();
-  const log = auditLog(db, householdId, actor, "settlement_started", startDate, `Started a new settlement cycle from ${startDate}.`);
-  const batch = writeBatch(db);
-  batch.update(householdRef(db, householdId), {
-    settlementStartDate: startDate,
-    settlementStartedAt,
-  });
-  batch.set(log.ref, log.data);
-  await withTimeout(
-    batch.commit(),
-    "start a new settlement cycle",
+  const dates = expenses.map((expense) => expense.date).sort();
+  const totalPaise = expenses.reduce((sum, expense) => sum + expense.amountPaise, 0);
+  const expenseSnapshots = expenses.map(({ id, ...expense }) => ({ id, ...expense }));
+  const record = doc(settlementRecordsRef(db, householdId));
+  const log = auditLog(
+    db,
+    householdId,
+    actor,
+    "settlement_started",
+    record.id,
+    `Settled ${expenses.length} expense${expenses.length === 1 ? "" : "s"} from ${
+      dates[0] ?? startDate
+    } to ${dates[dates.length - 1] ?? startDate}.`,
   );
+
+  // The final batch also writes the record, household and activity log.
+  const deleteBatchSize = 496;
+  for (let offset = 0; offset < expenses.length; offset += deleteBatchSize) {
+    const batch = writeBatch(db);
+    for (const expense of expenses.slice(offset, offset + deleteBatchSize)) {
+      batch.delete(expenseRef(db, householdId, expense.id));
+    }
+    if (offset + deleteBatchSize >= expenses.length) {
+      batch.set(record, {
+        startDate,
+        endDate,
+        totalPaise,
+        expenseCount: expenses.length,
+        settledAt: settlementStartedAt,
+        expenses: expenseSnapshots,
+      });
+      batch.update(householdRef(db, householdId), { settlementStartDate: endDate, settlementStartedAt });
+      batch.set(log.ref, log.data);
+    }
+    await withTimeout(batch.commit(), "start a new settlement cycle");
+  }
+
+  if (expenses.length === 0) {
+    const batch = writeBatch(db);
+    batch.set(record, {
+      startDate,
+      endDate,
+      totalPaise: 0,
+      expenseCount: 0,
+      settledAt: settlementStartedAt,
+      expenses: [],
+    });
+    batch.update(householdRef(db, householdId), { settlementStartDate: endDate, settlementStartedAt });
+    batch.set(log.ref, log.data);
+    await withTimeout(batch.commit(), "start a new settlement cycle");
+  }
 }
 
 /**
