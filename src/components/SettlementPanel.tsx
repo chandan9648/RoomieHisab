@@ -239,15 +239,35 @@ export function SettlementPanel({
           <ol className="divide-y divide-slate-100">
             {settlementRecords.map((record) => (
               <li key={record.id} className="p-4 sm:p-5">
+                {(() => {
+                  const expenses = record.expenses ?? [];
+                  const paidByTotals = expenses.reduce<
+                    Map<string, { name: string; totalPaise: number; count: number }>
+                  >((totals, expense) => {
+                    const current = totals.get(expense.paidBy) ?? {
+                      name: expense.payerName,
+                      totalPaise: 0,
+                      count: 0,
+                    };
+                    totals.set(expense.paidBy, {
+                      name: current.name || expense.payerName,
+                      totalPaise: current.totalPaise + expense.amountPaise,
+                      count: current.count + 1,
+                    });
+                    return totals;
+                  }, new Map());
+
+                  return (
+                    <>
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {formatDateISO(record.startDate)} – {formatDateISO(record.endDate)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {record.expenseCount}{" "}
-                    {record.expenseCount === 1 ? "expense" : "expenses"} settled
-                  </p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {formatDateISO(record.startDate)} – {formatDateISO(record.endDate)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {record.expenseCount}{" "}
+                      {record.expenseCount === 1 ? "expense" : "expenses"} settled
+                    </p>
                   </div>
                   <p className="tnum shrink-0 font-bold text-slate-900">
                     {formatPaise(record.totalPaise)}
@@ -257,22 +277,56 @@ export function SettlementPanel({
                   <summary className="cursor-pointer text-sm font-semibold text-slate-700">
                     View all expense details
                   </summary>
-                  <ul className="mt-3 space-y-2">
-                    {(record.expenses ?? []).map((expense) => (
-                      <li key={expense.id} className="rounded-lg bg-white p-3 text-xs text-slate-600">
-                        <p className="font-semibold text-slate-900">
-                          {expense.description} · {formatPaise(expense.amountPaise)}
+                  {expenses.length === 0 ? (
+                    <p className="mt-3 rounded-lg bg-white p-3 text-xs text-slate-500">
+                      Expense snapshots are not available for this older record.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mt-3 rounded-lg bg-white p-3">
+                        <p className="text-xs font-semibold text-slate-900">
+                          Spent by roommate
                         </p>
-                        <p className="mt-1">
-                          {formatDateISO(expense.date)} · Paid by {expense.payerName} · UID: {expense.paidBy}
-                        </p>
-                        <p className="mt-1">
-                          Notes: {expense.notes || "—"} · Expense ID: {expense.id}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+                        <ul className="mt-2 space-y-1.5">
+                          {[...paidByTotals.entries()].map(([uid, payer]) => (
+                            <li
+                              key={uid}
+                              className="flex items-center justify-between gap-3 text-xs text-slate-600"
+                            >
+                              <span>
+                                {payer.name}{" "}
+                                <span className="text-slate-400">
+                                  ({payer.count} {payer.count === 1 ? "expense" : "expenses"})
+                                </span>
+                              </span>
+                              <span className="tnum shrink-0 font-semibold text-slate-900">
+                                {formatPaise(payer.totalPaise)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <ul className="mt-3 space-y-2">
+                        {expenses.map((expense) => (
+                          <li key={expense.id} className="rounded-lg bg-white p-3 text-xs text-slate-600">
+                            <p className="font-semibold text-slate-900">
+                              {expense.description} · {formatPaise(expense.amountPaise)}
+                            </p>
+                            <p className="mt-1">
+                              {formatDateISO(expense.date)} · Paid by {expense.payerName}
+                            </p>
+                            <p className="mt-1">
+                              Notes: {expense.notes || "—"} · Expense ID: {expense.id}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
                 </details>
+                    </>
+                  );
+                })()}
               </li>
             ))}
           </ol>

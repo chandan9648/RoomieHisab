@@ -290,10 +290,10 @@ service cloud.firestore {
         allow read: if isMember(hid);
         allow create: if isMember(hid)
           && request.resource.data.keys().hasAll([
-            'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt'
+            'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt', 'expenses'
           ])
           && request.resource.data.keys().hasOnly([
-            'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt'
+            'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt', 'expenses'
           ])
           && request.resource.data.startDate is string
           && request.resource.data.startDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')

@@ -600,3 +600,36 @@ describe("expenses", () => {
     await assertSucceeds(deleteDoc(doc(as("bob"), "households/H1/expenses/e2")));
   });
 });
+
+describe("settlement records", () => {
+  it("allows members to save and read expense snapshots", async () => {
+    const record = {
+      startDate: "2026-10-16",
+      endDate: "2026-11-01",
+      totalPaise: 1000,
+      expenseCount: 1,
+      settledAt: 1_700_000_000_000,
+      expenses: [
+        {
+          id: "e1",
+          description: "Detergent",
+          amountPaise: 1000,
+          date: "2026-10-16",
+          paidBy: "alice",
+          payerName: "Alice",
+          notes: "",
+          createdAt: 1_700_000_000_000,
+        },
+      ],
+    };
+
+    await assertSucceeds(
+      setDoc(doc(as("alice"), "households/H1/settlementRecords/r1"), record),
+    );
+    const snapshot = await assertSucceeds(
+      getDoc(doc(as("bob"), "households/H1/settlementRecords/r1")),
+    );
+    expect(snapshot.data()?.expenses).toHaveLength(1);
+    await assertFails(getDoc(doc(as("dave"), "households/H1/settlementRecords/r1")));
+  });
+});
