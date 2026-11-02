@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { Plus } from "lucide-react";
+import { CalendarDays, Plus } from "lucide-react";
 
 import {
   ALL_TIME,
   currentMonthKey,
   formatMonthKey,
+  formatDateISO,
+  isValidDateISO,
   matchesMonth,
   monthRange,
   monthsWithData,
@@ -45,6 +47,70 @@ import { Modal } from "./ui/Modal";
 import { Alert, Button, Card, CardHeader, EmptyState } from "./ui/primitives";
 
 const RECENT_COUNT = 5;
+
+function SettlementDateInput({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  min?: string;
+  max?: string;
+  onChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(formatDateISO(value));
+  const datePicker = useRef<HTMLInputElement>(null);
+
+  useEffect(() => setDraft(formatDateISO(value)), [value]);
+
+  function updateDraft(next: string) {
+    setDraft(next);
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(next);
+    if (!match) return;
+    const [, day, month, year] = match;
+    const iso = `${year}-${month}-${day}`;
+    if (isValidDateISO(iso) && (!min || iso >= min) && (!max || iso <= max)) onChange(iso);
+  }
+
+  return (
+    <label className="text-sm font-semibold text-slate-700">
+      {label}
+      <span className="mt-1 flex min-h-11 items-center rounded-xl border border-slate-300 pr-2 focus-within:ring-2 focus-within:ring-indigo-500">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="DD/MM/YYYY"
+          aria-label={label}
+          value={draft}
+          onChange={(event) => updateDraft(event.target.value)}
+          className="min-w-0 flex-1 rounded-xl bg-transparent px-3 py-2 font-normal text-slate-900 outline-none"
+        />
+        <button
+          type="button"
+          aria-label={`Choose ${label.toLowerCase()} date`}
+          onClick={() => datePicker.current?.showPicker()}
+          className="grid h-9 w-9 place-items-center rounded-lg text-slate-700 hover:bg-slate-100"
+        >
+          <CalendarDays size={17} aria-hidden />
+        </button>
+        <input
+          ref={datePicker}
+          type="date"
+          value={value}
+          min={min}
+          max={max}
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => onChange(event.target.value)}
+          className="pointer-events-none absolute h-px w-px opacity-0"
+        />
+      </span>
+    </label>
+  );
+}
 
 export function Dashboard({
   user,
@@ -229,27 +295,19 @@ export function Dashboard({
         }
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-semibold text-slate-700">
-            From
-            <input
-              type="date"
-              value={settlementStartDate}
-              max={settlementEndDate}
-              onChange={(event) => setSettlementStartDate(event.target.value)}
-              className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 font-normal text-slate-900"
-            />
-          </label>
-          <label className="text-sm font-semibold text-slate-700">
-            To
-            <input
-              type="date"
-              value={settlementEndDate}
-              min={settlementStartDate}
-              max={todayISO()}
-              onChange={(event) => setSettlementEndDate(event.target.value)}
-              className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 font-normal text-slate-900"
-            />
-          </label>
+          <SettlementDateInput
+            label="From"
+            value={settlementStartDate}
+            max={settlementEndDate}
+            onChange={setSettlementStartDate}
+          />
+          <SettlementDateInput
+            label="To"
+            value={settlementEndDate}
+            min={settlementStartDate}
+            max={todayISO()}
+            onChange={setSettlementEndDate}
+          />
         </div>
       </Modal>
       <AppHeader
