@@ -40,11 +40,11 @@ export function formatMonthKey(key: MonthFilter): string {
   return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
 
-/** "2026-10-16" -> "16 Oct 2026" */
+/** "2026-10-16" -> "16/10/2026" */
 export function formatDateISO(dateISO: string): string {
   if (!isValidDateISO(dateISO)) return dateISO;
   const [y, m, d] = dateISO.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return `${pad(d)}/${pad(m)}/${y}`;
 }
 
 /**

@@ -21,6 +21,14 @@ export type SettlementRecord = {
   totalPaise: number;
   expenseCount: number;
   settledAt: number;
+  /** Transfers calculated when this cycle was settled. Absent on older records. */
+  transfers?: Array<{
+    fromUid: string;
+    fromName: string;
+    toUid: string;
+    toName: string;
+    amountPaise: number;
+  }>;
   expenses: Array<{
     id: string;
     description: string;

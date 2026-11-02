@@ -29,6 +29,7 @@ import type { User } from "firebase/auth";
 import { requireFirebase } from "./firebase";
 import { isPermissionDenied, withTimeout } from "./errors";
 import { generateInviteCode, normaliseInviteCode } from "./invite";
+import { calculateSettlement } from "./settlements";
 import { safeMemberName, validateHouseholdName } from "./validation";
 import type {
   AuditAction,
@@ -282,6 +283,7 @@ export async function startSettlementCycle(
   startDate: string,
   endDate: string,
   actor: AuditActor,
+  members: Member[],
   expenses: Expense[],
 ): Promise<void> {
   const { db } = requireFirebase();
@@ -289,6 +291,10 @@ export async function startSettlementCycle(
   const dates = expenses.map((expense) => expense.date).sort();
   const totalPaise = expenses.reduce((sum, expense) => sum + expense.amountPaise, 0);
   const expenseSnapshots = expenses.map(({ id, ...expense }) => ({ id, ...expense }));
+  const transfers = calculateSettlement(
+    members.map((member) => ({ uid: member.uid, name: member.displayName })),
+    expenses.map((expense) => ({ paidBy: expense.paidBy, amountPaise: expense.amountPaise })),
+  ).transfers;
   const record = doc(settlementRecordsRef(db, householdId));
   const log = auditLog(
     db,
@@ -315,6 +321,7 @@ export async function startSettlementCycle(
         totalPaise,
         expenseCount: expenses.length,
         settledAt: settlementStartedAt,
+        transfers,
         expenses: expenseSnapshots,
       });
       batch.update(householdRef(db, householdId), { settlementStartDate: endDate, settlementStartedAt });
@@ -331,6 +338,7 @@ export async function startSettlementCycle(
       totalPaise: 0,
       expenseCount: 0,
       settledAt: settlementStartedAt,
+      transfers,
       expenses: [],
     });
     batch.update(householdRef(db, householdId), { settlementStartDate: endDate, settlementStartedAt });

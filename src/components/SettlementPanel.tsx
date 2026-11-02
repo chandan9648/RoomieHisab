@@ -4,8 +4,8 @@ import { ArrowDownLeft, ArrowRight, ArrowUpRight, CheckCircle2, Handshake, Info 
 
 import { formatDateISO, formatMonthKey, type MonthFilter } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { transfersForUser, type Settlement, type Transfer } from "@/lib/settlements";
-import type { SettlementRecord } from "@/lib/types";
+import { calculateSettlement, transfersForUser, type Settlement, type Transfer } from "@/lib/settlements";
+import type { Member, SettlementRecord } from "@/lib/types";
 import { Alert, Button, Card, CardHeader, EmptyState, cx } from "./ui/primitives";
 
 function TransferRow({
@@ -69,6 +69,21 @@ function TransferRow({
   );
 }
 
+function HistoryTransferRow({ transfer }: { transfer: Transfer }) {
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5">
+      <p className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-semibold text-indigo-950">
+        <span className="truncate">{transfer.fromName}</span>
+        <ArrowRight size={13} className="shrink-0 text-indigo-400" aria-label="sends to" />
+        <span className="truncate">{transfer.toName}</span>
+      </p>
+      <p className="tnum shrink-0 whitespace-nowrap text-sm font-bold text-indigo-800">
+        {formatPaise(transfer.amountPaise)}
+      </p>
+    </li>
+  );
+}
+
 export function SettlementPanel({
   settlement,
   month,
@@ -77,6 +92,7 @@ export function SettlementPanel({
   onStartNewCycle,
   canStartNewCycle,
   settlementRecords,
+  members,
 }: {
   settlement: Settlement;
   month: MonthFilter;
@@ -85,6 +101,7 @@ export function SettlementPanel({
   onStartNewCycle: () => void;
   canStartNewCycle: boolean;
   settlementRecords: SettlementRecord[];
+  members: Member[];
 }) {
   const { toSend, toReceive } = transfersForUser(settlement.transfers, currentUid);
   const sendTotal = toSend.reduce((sum, t) => sum + t.amountPaise, 0);
@@ -283,6 +300,42 @@ export function SettlementPanel({
                     </p>
                   ) : (
                     <>
+                      {(() => {
+                        const transfers =
+                          record.transfers ??
+                          calculateSettlement(
+                            members.map((member) => ({
+                              uid: member.uid,
+                              name: member.displayName,
+                            })),
+                            expenses.map((expense) => ({
+                              paidBy: expense.paidBy,
+                              amountPaise: expense.amountPaise,
+                            })),
+                          ).transfers;
+
+                        return (
+                          <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
+                            <p className="text-xs font-bold uppercase tracking-wide text-indigo-900">
+                              Who sends how much to whom
+                            </p>
+                            {transfers.length > 0 ? (
+                              <ul className="mt-2 space-y-2">
+                                {transfers.map((transfer) => (
+                                  <HistoryTransferRow
+                                    key={`${transfer.fromUid}-${transfer.toUid}`}
+                                    transfer={transfer}
+                                  />
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="mt-1 text-xs text-indigo-800">
+                                Everyone was already settled for this cycle.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="mt-3 rounded-lg bg-white p-3">
                         <p className="text-xs font-semibold text-slate-900">
                           Spent by roommate

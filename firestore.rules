@@ -292,9 +292,14 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll([
             'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt', 'expenses'
           ])
-          && request.resource.data.keys().hasOnly([
-            'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt', 'expenses'
-          ])
+          && (
+            request.resource.data.keys().hasOnly([
+              'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt', 'expenses'
+            ])
+            || request.resource.data.keys().hasOnly([
+              'startDate', 'endDate', 'totalPaise', 'expenseCount', 'settledAt', 'transfers', 'expenses'
+            ])
+          )
           && request.resource.data.startDate is string
           && request.resource.data.startDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
           && request.resource.data.endDate is string
@@ -304,6 +309,8 @@ service cloud.firestore {
           && request.resource.data.expenseCount is int
           && request.resource.data.expenseCount >= 0
           && request.resource.data.settledAt is number
+          && (!request.resource.data.keys().hasAny(['transfers'])
+            || request.resource.data.transfers is list)
           && request.resource.data.expenses is list
           && request.resource.data.expenses.size() == request.resource.data.expenseCount;
         allow update, delete: if false;

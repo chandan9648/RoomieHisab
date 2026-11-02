@@ -187,6 +187,7 @@ export function Dashboard({
           settlementStartDate,
           settlementEndDate,
           actor,
+          members,
           selectedExpenses,
         );
         setMonth(currentMonthKey());
@@ -406,6 +407,7 @@ export function Dashboard({
                 currentUid={user.uid}
                 cycleStartDate={household.settlementStartDate}
                 settlementRecords={settlementRecords}
+                members={members}
                 onStartNewCycle={confirmStartSettlementCycle}
                 canStartNewCycle={me?.role === "admin" || household.createdBy === user.uid}
               />

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_TIME,
   currentMonthKey,
+  formatDateISO,
   isValidDateISO,
   matchesMonth,
   monthKeyOf,
@@ -32,6 +33,17 @@ describe("local calendar days", () => {
 describe("isValidDateISO", () => {
   it.each(["2026-10-16", "2024-02-29", "2026-01-01"])("accepts %s", (value) => {
     expect(isValidDateISO(value)).toBe(true);
+  });
+
+  describe("date display", () => {
+    it("formats dates as DD/MM/YYYY", () => {
+      expect(formatDateISO("2026-01-05")).toBe("05/01/2026");
+      expect(formatDateISO("2026-10-16")).toBe("16/10/2026");
+    });
+
+    it("leaves invalid dates unchanged", () => {
+      expect(formatDateISO("not-a-date")).toBe("not-a-date");
+    });
   });
 
   it.each(["2026-02-30", "2026-13-01", "2026-00-10", "2026-10-32", "16-10-2026", "2026-10", ""])(
