@@ -22,3 +22,5 @@ coverage/
 # misc
 .DS_Store
 *.log
+
+feature.md
